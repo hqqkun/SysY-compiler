@@ -59,7 +59,7 @@ Block
     }
     ;
 
-Stmt 
+Stmt
     : RETURN Number ';' {
       auto number = std::unique_ptr<std::string>($2);
       $$ = new std::string("return " + *number + ";\n");
