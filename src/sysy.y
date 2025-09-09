@@ -1,6 +1,8 @@
 %code requires {
   #include <memory>
   #include <string>
+  #include "ast.h"
+  #include "type.h"
 }
 
 %{
@@ -8,16 +10,20 @@
 #include <memory>
 #include <string>
 
+#include "ast.h"
+#include "type.h"
+
 int yylex();
-void yyerror(std::unique_ptr<std::string>& ast, const char* s);
+void yyerror(std::unique_ptr<BaseAST>& ast, const char* s);
 %}
 
 
-%parse-param { std::unique_ptr<std::string>& ast }
+%parse-param { std::unique_ptr<BaseAST> &ast }
 
 %union {
   int int_val;
   std::string* str_val;
+  BaseAST* ast_val;
 }
 
 
@@ -25,54 +31,62 @@ void yyerror(std::unique_ptr<std::string>& ast, const char* s);
 %token <int_val> INT_CONST
 %token <str_val> IDENT
 
-%type <str_val> FuncDef FuncType Block Stmt Number
+%type <ast_val> FuncDef FuncType Block Stmt
+%type <int_val> Number
 
 %%
 
 // Compilation unit
 CompUnit
     : FuncDef {
-      ast = std::unique_ptr<std::string>($1);
+      auto comp_unit = std::make_unique<CompUnitAST>();
+      comp_unit->funcDef = std::unique_ptr<BaseAST>($1);
+      ast = std::move(comp_unit);
     }
     ;
 
 // FuncDef ::= FuncType IDENT '(' ')' Block;
 FuncDef
     : FuncType IDENT '(' ')' Block {
-      auto type = std::unique_ptr<std::string>($1);
-      auto ident = std::unique_ptr<std::string>($2);
-      auto block = std::unique_ptr<std::string>($5);
-      $$ = new std::string(*type + " " + *ident + "()" + *block);
+      auto ast = new FuncDefAST();
+      ast->funcType = std::unique_ptr<BaseAST>($1);
+      ast->ident = *std::unique_ptr<std::string>($2);
+      ast->block = std::unique_ptr<BaseAST>($5);
+      $$ = ast;
     }
     ;
 
 FuncType
     : INT {
-      $$ = new std::string("int");
+      auto ast = new FuncTypeAST();
+      ast->type = Type::INT;
+      $$ = ast;
     }
     ;
 
 Block
     : '{' Stmt '}' {
-      auto stmt = std::unique_ptr<std::string>($2);
-      $$ = new std::string(" {\n" + *stmt + "}\n");
+      auto ast = new BlockAST();
+      ast->stmt = std::unique_ptr<BaseAST>($2);
+      $$ = ast;
     }
     ;
 
 Stmt
     : RETURN Number ';' {
-      auto number = std::unique_ptr<std::string>($2);
-      $$ = new std::string("return " + *number + ";\n");
+      auto ast = new StmtAST();
+      ast->number = $2;
+      $$ = ast;
     }
     ;
 
 Number
     : INT_CONST {
-      $$ = new std::string(std::to_string($1));
+      $$ = $1;
     }
     ;
 %%
 
-void yyerror(std::unique_ptr<std::string>& ast, const char* s) {
-    std::cerr << "Error: " << s << std::endl;
+void yyerror(std::unique_ptr<BaseAST>& ast, const char* s) {
+  std::cerr << "Error: " << s << std::endl;
 }
