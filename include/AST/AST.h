@@ -1,11 +1,12 @@
-#ifndef __AST_H__
-#define __AST_H__
+#ifndef __AST_AST_H__
+#define __AST_AST_H__
 
 #include <memory>
 #include <string>
 
-#include "type.h"
+#include "AST/Type.h"
 
+namespace ast {
 class BaseAST {
 public:
   virtual ~BaseAST() = default;
@@ -44,4 +45,5 @@ public:
   void dump() const override;
 };
 
-#endif // __AST_H__
+} // namespace ast
+#endif // __AST_AST_H__

@@ -1,8 +1,9 @@
 #include <iostream>
 
-#include "ast.h"
-#include "type.h"
+#include "AST/AST.h"
+#include "AST/Type.h"
 
+namespace ast {
 void CompUnitAST::dump() const {
   std::cout << "CompUnitAST { ";
   if (funcDef) {
@@ -42,3 +43,4 @@ void BlockAST::dump() const {
 }
 
 void StmtAST::dump() const { std::cout << "StmtAST { " << number << " }"; }
+} // namespace ast

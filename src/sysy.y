@@ -1,8 +1,8 @@
 %code requires {
   #include <memory>
   #include <string>
-  #include "ast.h"
-  #include "type.h"
+  #include "AST/AST.h"
+  #include "AST/Type.h"
 }
 
 %{
@@ -10,20 +10,20 @@
 #include <memory>
 #include <string>
 
-#include "ast.h"
-#include "type.h"
+#include "AST/AST.h"
+#include "AST/Type.h"
 
 int yylex();
-void yyerror(std::unique_ptr<BaseAST>& ast, const char* s);
+void yyerror(std::unique_ptr<ast::BaseAST>& ast, const char* s);
 %}
 
 
-%parse-param { std::unique_ptr<BaseAST> &ast }
+%parse-param { std::unique_ptr<ast::BaseAST> &ast }
 
 %union {
   int int_val;
   std::string* str_val;
-  BaseAST* ast_val;
+  ast::BaseAST* ast_val;
 }
 
 
@@ -39,8 +39,8 @@ void yyerror(std::unique_ptr<BaseAST>& ast, const char* s);
 // Compilation unit
 CompUnit
     : FuncDef {
-      auto comp_unit = std::make_unique<CompUnitAST>();
-      comp_unit->funcDef = std::unique_ptr<BaseAST>($1);
+      auto comp_unit = std::make_unique<ast::CompUnitAST>();
+      comp_unit->funcDef = std::unique_ptr<ast::BaseAST>($1);
       ast = std::move(comp_unit);
     }
     ;
@@ -48,33 +48,33 @@ CompUnit
 // FuncDef ::= FuncType IDENT '(' ')' Block;
 FuncDef
     : FuncType IDENT '(' ')' Block {
-      auto ast = new FuncDefAST();
-      ast->funcType = std::unique_ptr<BaseAST>($1);
+      auto ast = new ast::FuncDefAST();
+      ast->funcType = std::unique_ptr<ast::BaseAST>($1);
       ast->ident = *std::unique_ptr<std::string>($2);
-      ast->block = std::unique_ptr<BaseAST>($5);
+      ast->block = std::unique_ptr<ast::BaseAST>($5);
       $$ = ast;
     }
     ;
 
 FuncType
     : INT {
-      auto ast = new FuncTypeAST();
-      ast->type = Type::INT;
+      auto ast = new ast::FuncTypeAST();
+      ast->type = ast::Type::INT;
       $$ = ast;
     }
     ;
 
 Block
     : '{' Stmt '}' {
-      auto ast = new BlockAST();
-      ast->stmt = std::unique_ptr<BaseAST>($2);
+      auto ast = new ast::BlockAST();
+      ast->stmt = std::unique_ptr<ast::BaseAST>($2);
       $$ = ast;
     }
     ;
 
 Stmt
     : RETURN Number ';' {
-      auto ast = new StmtAST();
+      auto ast = new ast::StmtAST();
       ast->number = $2;
       $$ = ast;
     }
@@ -87,6 +87,6 @@ Number
     ;
 %%
 
-void yyerror(std::unique_ptr<BaseAST>& ast, const char* s) {
+void yyerror(std::unique_ptr<ast::BaseAST>& ast, const char* s) {
   std::cerr << "Error: " << s << std::endl;
 }

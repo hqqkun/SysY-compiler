@@ -1,4 +1,4 @@
 BasedOnStyle:  LLVM
 IndentWidth: 2
-SortIncludes: false
+SortIncludes: true
 ColumnLimit: 80
