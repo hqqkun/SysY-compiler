@@ -1,4 +1,6 @@
 #include "Conversion/Conversion.h"
+#include "IR/Function.h"
+#include "IR/IRBuilder.h"
 #include "IR/Operation.h"
 
 using namespace ast;
@@ -14,22 +16,21 @@ static ir::FunctionType *convertFunctionType(ir::IRContext &context,
   return ir::FunctionType::get(context, intType, {});
 }
 
-static ir::Operation *convertStmt(ir::IRContext &context, StmtAST *stmtAST) {
-  return stmtAST ? context.create<ir::ReturnOp>(
-                       ir::Integer::get(context, stmtAST->number))
+static ir::Operation *convertStmt(ir::IRBuilder &builder, StmtAST *stmtAST) {
+  return stmtAST ? builder.create<ir::ReturnOp>(
+                       ir::Integer::get(builder.getContext(), stmtAST->number))
                  : nullptr;
 }
 
-static ir::BasicBlock *convertBlock(ir::IRContext &context,
+static ir::BasicBlock *convertBlock(ir::IRBuilder &builder,
                                     BlockAST *blockAST) {
   if (!blockAST)
     return nullptr;
 
-  ir::BasicBlock *block = context.create<ir::BasicBlock>("entry");
+  ir::BasicBlock *block = builder.create<ir::BasicBlock>("entry");
+  builder.setInsertPoint(block);
   if (auto stmt = dynamic_cast<StmtAST *>(blockAST->stmt.get())) {
-    if (auto op = convertStmt(context, stmt)) {
-      block->insert_back(op);
-    }
+    convertStmt(builder, stmt);
   }
   return block;
 }
@@ -47,10 +48,11 @@ ir::Function *convertASTToIR(ir::IRContext &context,
   if (!funcDef || !funcType)
     return nullptr;
 
+  ir::IRBuilder builder(context);
   ir::Function *function =
-      context.create<ir::Function>(funcDef->ident, funcType);
+      builder.create<ir::Function>(funcDef->ident, funcType);
   if (auto entryBlock = convertBlock(
-          context, dynamic_cast<BlockAST *>(funcDef->block.get()))) {
+          builder, dynamic_cast<BlockAST *>(funcDef->block.get()))) {
     function->addBlock(entryBlock);
   }
 
