@@ -14,20 +14,27 @@ class Operation;
 
 class Value : public IRObject {
 public:
-  explicit Value() : _type(nullptr) {}
-  explicit Value(Type *type) : _type(type) {}
+  explicit Value() = delete;
   virtual ~Value() = default;
   virtual void print(std::ostream &os) const override = 0;
   Type *getType() const { return _type; }
+  bool isInteger() const { return getKind() == ValueKind::kInteger; }
+  bool isOpResult() const { return getKind() == ValueKind::kOpResult; }
+  bool isFuncArg() const { return getKind() == ValueKind::kFuncArg; }
 
 protected:
+  enum class ValueKind { kInvalid, kInteger, kOpResult, kFuncArg };
+  explicit Value(Type *type = nullptr, ValueKind kind = ValueKind::kInvalid)
+      : _type(type), _kind(kind) {}
+  ValueKind getKind() const { return _kind; }
   Type *_type;
+  ValueKind _kind;
 };
 
 class Integer : public Value {
 public:
   explicit Integer(IRContext &context, int val, Type *type)
-      : Value(type), integer(val) {}
+      : Value(type, ValueKind::kInteger), integer(val) {}
   int getValue() const { return integer; }
   void print(std::ostream &os) const override;
 
@@ -40,7 +47,7 @@ private:
 class OpResult : public Value {
 public:
   explicit OpResult(IRContext &context, Operation *defOp)
-      : Value(defOp->getResultType()), defOp(defOp) {}
+      : Value(defOp->getResultType(), ValueKind::kOpResult), defOp(defOp) {}
   Operation *getDefiningOp() const { return defOp; }
   void print(std::ostream &os) const override;
 
@@ -51,7 +58,7 @@ private:
 class FuncArg : public Value {
 public:
   explicit FuncArg(IRContext &context, Type *type, size_t index)
-      : Value(type), index(index) {}
+      : Value(type, ValueKind::kFuncArg), index(index) {}
   size_t getIndex() const { return index; }
   void print(std::ostream &os) const override;
 

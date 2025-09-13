@@ -29,6 +29,15 @@ public:
 
   void print(std::ostream &os) const override;
 
+  using iterator = std::list<Operation *>::iterator;
+  using const_iterator = std::list<Operation *>::const_iterator;
+
+  size_t size() const { return operations.size(); }
+  iterator begin() { return operations.begin(); }
+  const_iterator begin() const { return operations.begin(); }
+  iterator end() { return operations.end(); }
+  const_iterator end() const { return operations.end(); }
+
 private:
   std::list<Operation *> operations;
   std::string name;

@@ -6,6 +6,10 @@
 
 #include "AST/AST.h"
 #include "Conversion/Conversion.h"
+#include "Target/RISCV/RISCVTargetMachine.h"
+
+static constexpr std::string_view kIR = "-koopa";
+static constexpr std::string_view kRISCV = "-riscv";
 
 extern FILE *yyin;
 extern int yyparse(std::unique_ptr<ast::BaseAST> &ast);
@@ -16,7 +20,7 @@ int main(int argc, const char *argv[]) {
               << std::endl;
     return -1;
   }
-  [[maybe_unused]] const char *mode = argv[1];
+  std::string mode = argv[1];
   const char *input_file = argv[2];
   const char *output_file = argv[4];
 
@@ -46,6 +50,14 @@ int main(int argc, const char *argv[]) {
     return -1;
   }
 
-  func->print(ofs);
+  if (mode == kIR) {
+    func->print(ofs);
+  } else if (mode == kRISCV) {
+    target::riscv::RISCVTargetMachine tm(ofs);
+    tm.codeGen(func);
+  } else {
+    std::cerr << "Unknown mode: " << mode << std::endl;
+    return -1;
+  }
   return 0;
 }

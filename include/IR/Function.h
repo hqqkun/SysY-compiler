@@ -28,6 +28,15 @@ public:
   const std::string &getName() const { return name; }
   void print(std::ostream &os) const override;
 
+  using block_iterator = std::list<BasicBlock *>::iterator;
+  using const_block_iterator = std::list<BasicBlock *>::const_iterator;
+
+  size_t size() const { return blocks.size(); }
+  block_iterator begin() { return blocks.begin(); }
+  const_block_iterator begin() const { return blocks.begin(); }
+  block_iterator end() { return blocks.end(); }
+  const_block_iterator end() const { return blocks.end(); }
+
 private:
   std::string name;
   std::list<BasicBlock *> blocks;
