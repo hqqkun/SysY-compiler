@@ -1,6 +1,7 @@
 #ifndef __IR_TYPE_H__
 #define __IR_TYPE_H__
 
+#include <optional>
 #include <ostream>
 #include <vector>
 
@@ -13,7 +14,6 @@ class Type : public IRObject {
 public:
   explicit Type() = delete;
   virtual ~Type() = default;
-  virtual void print(std::ostream &os) const override = 0;
   Type(const Type &) = delete;
   Type &operator=(const Type &) = delete;
 
@@ -33,7 +33,6 @@ public:
   explicit IntegerType(IRContext &context, unsigned int bitWidth = 32)
       : Type(TypeKind::kInteger), bitWidth(bitWidth) {}
   unsigned int getBitWidth() const { return bitWidth; }
-  void print(std::ostream &os) const override;
 
   static IntegerType *get(IRContext &context, unsigned int bitWidth = 32);
 
@@ -44,26 +43,25 @@ private:
 class VoidType : public Type {
 public:
   explicit VoidType(IRContext &context) : Type(TypeKind::kVoid) {}
-  void print(std::ostream &os) const override;
 
   static VoidType *get(IRContext &context);
 };
 
 class FunctionType : public Type {
 public:
-  explicit FunctionType(IRContext &context, Type *returnType,
+  explicit FunctionType(IRContext &context, std::optional<Type *> returnType,
                         const std::vector<Type *> &paramTypes)
       : Type(TypeKind::kFunction), _returnType(returnType),
         paramTypes(paramTypes) {}
-  Type *getReturnType() const { return _returnType; }
+  Type *getReturnType() const { return _returnType.value_or(nullptr); }
+  bool hasReturnType() const { return _returnType.has_value(); }
   const std::vector<Type *> &getParamTypes() const { return paramTypes; }
-  void print(std::ostream &os) const override;
 
   static FunctionType *get(IRContext &context, Type *returnType,
                            const std::vector<Type *> &paramTypes);
 
 private:
-  Type *_returnType;
+  std::optional<Type *> _returnType;
   std::vector<Type *> paramTypes;
 };
 

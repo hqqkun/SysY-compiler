@@ -7,7 +7,6 @@ namespace ir {
 class IRObject {
 public:
   virtual ~IRObject() = default;
-  virtual void print(std::ostream &os) const = 0;
 };
 } // namespace ir
 

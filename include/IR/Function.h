@@ -24,9 +24,14 @@ public:
       blocks.push_back(block);
     }
   }
+
+  static Function *create(IRContext &context, const std::string &name,
+                          FunctionType *funcType) {
+    return context.create<Function>(name, funcType);
+  }
+
   FunctionType *getFunctionType() const { return funcType; }
   const std::string &getName() const { return name; }
-  void print(std::ostream &os) const override;
 
   using block_iterator = std::list<BasicBlock *>::iterator;
   using const_block_iterator = std::list<BasicBlock *>::const_iterator;

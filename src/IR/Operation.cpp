@@ -21,9 +21,17 @@ AddOp::AddOp(IRContext &context, Value *lhs, Value *rhs)
   result = context.create<OpResult>(this);
 }
 
-void AddOp::print(std::ostream &os) const {
-  // TODO: implement AddOp printing
-  throw std::runtime_error("AddOp::print not implemented");
+SubOp::SubOp(IRContext &context, Value *lhs, Value *rhs)
+    : BinaryOp(context, lhs, rhs) {
+  resultType = lhs->getType();
+  result = context.create<OpResult>(this);
+}
+
+EqOp::EqOp(IRContext &context, Value *lhs, Value *rhs)
+    : BinaryOp(context, lhs, rhs) {
+  // For accuracy, we assume comparison results in a boolean type.
+  resultType = IntegerType::get(context, 1);
+  result = context.create<OpResult>(this);
 }
 
 ReturnOp::ReturnOp(IRContext &context, Value *retVal) {
@@ -37,12 +45,4 @@ ReturnOp::ReturnOp(IRContext &context, Value *retVal) {
   result = nullptr;
 }
 
-void ReturnOp::print(std::ostream &os) const {
-  os << "ret";
-  if (getReturnValue()) {
-    os << " ";
-    getReturnValue()->print(os);
-  }
-  os << std::endl;
-}
 } // namespace ir

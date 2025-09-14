@@ -16,8 +16,6 @@ public:
     }
   }
 
-  void print(std::ostream &os) const override {}
-
 private:
   // TODO: Add global variables, etc.
   std::list<Function *> functions;
