@@ -5,7 +5,6 @@
 #include "IR/Function.h"
 
 namespace ir {
-static constexpr std::string_view kPrefix = "fun @";
 
 BasicBlock *Function::getEntryBlock() const {
   if (blocks.empty())
@@ -27,16 +26,6 @@ Function::Function(IRContext &context, const std::string &name,
     FuncArg *arg = context.create<FuncArg>(paramType, index);
     args.push_back(arg);
   }
-}
-
-void Function::print(std::ostream &os) const {
-  os << kPrefix << name;
-  funcType->print(os);
-  os << " {" << std::endl;
-  for (BasicBlock *block : blocks) {
-    block->print(os);
-  }
-  os << "}" << std::endl;
 }
 
 } // namespace ir

@@ -27,13 +27,6 @@ public:
     }
   }
 
-  template <typename T, typename... Args,
-            std::enable_if_t<std::is_same_v<T, Function> ||
-                                 std::is_same_v<T, BasicBlock>,
-                             int> = 0>
-  T *create(Args &&...args) {
-    return context.create<T>(std::forward<Args>(args)...);
-  }
   IRContext &getContext() { return context; }
 
 private:

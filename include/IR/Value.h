@@ -16,7 +16,6 @@ class Value : public IRObject {
 public:
   explicit Value() = delete;
   virtual ~Value() = default;
-  virtual void print(std::ostream &os) const override = 0;
   Type *getType() const { return _type; }
   bool isInteger() const { return getKind() == ValueKind::kInteger; }
   bool isOpResult() const { return getKind() == ValueKind::kOpResult; }
@@ -36,7 +35,6 @@ public:
   explicit Integer(IRContext &context, int val, Type *type)
       : Value(type, ValueKind::kInteger), integer(val) {}
   int getValue() const { return integer; }
-  void print(std::ostream &os) const override;
 
   static Integer *get(IRContext &context, int val, unsigned int bitwidth = 32);
 
@@ -49,7 +47,6 @@ public:
   explicit OpResult(IRContext &context, Operation *defOp)
       : Value(defOp->getResultType(), ValueKind::kOpResult), defOp(defOp) {}
   Operation *getDefiningOp() const { return defOp; }
-  void print(std::ostream &os) const override;
 
 private:
   Operation *defOp;
@@ -60,7 +57,6 @@ public:
   explicit FuncArg(IRContext &context, Type *type, size_t index)
       : Value(type, ValueKind::kFuncArg), index(index) {}
   size_t getIndex() const { return index; }
-  void print(std::ostream &os) const override;
 
 private:
   std::string name; // argument name

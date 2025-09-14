@@ -1,3 +1,4 @@
+#include <cassert>
 #include <iostream>
 
 #include "AST/AST.h"
@@ -27,9 +28,9 @@ void FuncDefAST::dump() const {
 void FuncTypeAST::dump() const {
   std::cout << "FuncTypeAST { ";
   switch (type) {
-  case Type::INT:
-    std::cout << "INT";
-    break;
+    case Type::INT:
+      std::cout << "INT";
+      break;
   }
   std::cout << " }";
 }
@@ -42,5 +43,45 @@ void BlockAST::dump() const {
   std::cout << " }";
 }
 
-void StmtAST::dump() const { std::cout << "StmtAST { " << number << " }"; }
+void StmtAST::dump() const {
+  std::cout << "StmtAST { ";
+  if (exp) {
+    exp->dump();
+  }
+  std::cout << " }";
+}
+
+void ExprAST::dump() const {
+  std::cout << "ExprAST { ";
+  if (unaryExp) {
+    unaryExp->dump();
+  }
+  std::cout << " }";
+}
+
+void PrimaryExpAST::dump() const {
+  std::cout << "PrimaryExpAST { ";
+  if (isExp()) {
+    exp->dump();
+  } else if (isNumber()) {
+    std::cout << number;
+  } else {
+    assert(false && "Invalid PrimaryExpAST");
+  }
+  std::cout << " }";
+}
+
+void UnaryExpAST::dump() const {
+  std::cout << "UnaryExpAST { ";
+  if (isPrimary()) {
+    primaryExp->dump();
+  } else if (isUnaryOp()) {
+    std::cout << unaryOp << ": ";
+    childUnaryExp->dump();
+  } else {
+    assert(false && "Invalid UnaryExpAST");
+  }
+  std::cout << " }";
+}
+
 } // namespace ast

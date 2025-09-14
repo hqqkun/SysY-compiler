@@ -26,8 +26,11 @@ public:
       operations.push_front(op);
     }
   }
+  const std::string &getName() const { return name; }
 
-  void print(std::ostream &os) const override;
+  static BasicBlock *create(IRContext &context, const std::string &name) {
+    return context.create<BasicBlock>(name);
+  }
 
   using iterator = std::list<Operation *>::iterator;
   using const_iterator = std::list<Operation *>::const_iterator;

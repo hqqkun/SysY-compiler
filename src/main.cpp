@@ -5,7 +5,8 @@
 #include <string>
 
 #include "AST/AST.h"
-#include "Conversion/Conversion.h"
+#include "Conversion/IRGen.h"
+#include "Conversion/IRPrinter.h"
 #include "Target/RISCV/RISCVTargetMachine.h"
 
 static constexpr std::string_view kIR = "-koopa";
@@ -44,14 +45,16 @@ int main(int argc, const char *argv[]) {
   }
 
   ir::IRContext irContext;
-  ir::Function *func = conversion::convertASTToIR(irContext, ast);
+  conversion::IRGen irGen(irContext);
+  ir::Function *func = irGen.generate(ast);
   if (!func) {
     std::cerr << "Failed to convert AST to IR." << std::endl;
     return -1;
   }
 
   if (mode == kIR) {
-    func->print(ofs);
+    conversion::IRPrinter printer(ofs);
+    printer.printFunction(func);
   } else if (mode == kRISCV) {
     target::riscv::RISCVTargetMachine tm(ofs);
     tm.codeGen(func);
