@@ -17,11 +17,14 @@ RISCVISel::selectInstructions(const ir::Function *func) {
   }
 
   std::vector<mc::MCInst> mcInsts;
+  instrInfo.resetRegMap();
   for (ir::BasicBlock *bb : *func) {
     for (ir::Operation *op : *bb) {
       assert(op && "Operation is null");
       if (auto retOp = dynamic_cast<ir::ReturnOp *>(op)) {
         instrInfo.lowerReturn(retOp, mcInsts);
+      } else if (auto binOp = dynamic_cast<ir::BinaryOp *>(op)) {
+        instrInfo.lowerBinaryOp(binOp, mcInsts);
       } else {
         // Handle other operation types here.
         // For now, we can just ignore them or throw an error.

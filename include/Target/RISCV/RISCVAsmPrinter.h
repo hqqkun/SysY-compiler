@@ -16,6 +16,9 @@ public:
   void emitFunction(const ir::Function *func,
                     const std::vector<mc::MCInst> &instrs);
   void emitInstructions(const std::vector<mc::MCInst> &instrs) override;
+
+private:
+  void emitOperands(const std::vector<mc::MCOperand> &operands);
 };
 
 } // namespace riscv

@@ -14,6 +14,16 @@ using namespace ir;
 namespace target {
 namespace riscv {
 
+/// naive implementation of register allocation.
+Register allocateNewRegister() {
+  static const std::vector<Register> availableRegs = {
+      A0, A1, A2, A3, A4, A5, A6, A7, T0, T1, T2, T3, T4, T5, T6};
+  static size_t nextRegIdx = 0;
+  assert(nextRegIdx < availableRegs.size() &&
+         "Ran out of registers for allocation");
+  return availableRegs[nextRegIdx++];
+}
+
 void RISCVInstrInfo::lowerReturn(ReturnOp *retOp,
                                  std::vector<mc::MCInst> &outInsts) {
   assert(retOp && "ReturnOp is null");
@@ -24,12 +34,67 @@ void RISCVInstrInfo::lowerReturn(ReturnOp *retOp,
         mc::MCInstBuilder(riscv::LI).addReg(riscv::A0).addImm(0));
   } else {
     // Return with value.
-    assert(retVal->isInteger() && "Return value is not an integer");
-    int32_t imm = static_cast<Integer *>(retVal)->getValue();
+    Register retReg = lowerOperand(retVal, outInsts);
     outInsts.push_back(
-        mc::MCInstBuilder(riscv::LI).addReg(riscv::A0).addImm(imm));
+        mc::MCInstBuilder(riscv::MV).addReg(riscv::A0).addReg(retReg));
   }
   outInsts.push_back(mc::MCInstBuilder(riscv::RET));
+}
+
+void RISCVInstrInfo::lowerBinaryOp(ir::BinaryOp *binOp,
+                                   std::vector<mc::MCInst> &outInsts) {
+  assert(binOp && "BinaryOp is null");
+  Value *lhs = binOp->getLHS();
+  Value *rhs = binOp->getRHS();
+  assert(lhs && rhs && "BinaryOp operands cannot be null");
+  assert(value2RegMap.find(binOp->getResult()) == value2RegMap.end() &&
+         "Result is already allocated a register");
+
+  Register lhsReg = lowerOperand(lhs, outInsts);
+  Register rhsReg = lowerOperand(rhs, outInsts);
+  Register dstReg = allocateNewRegister();
+  if (auto *sub = dynamic_cast<ir::SubOp *>(binOp)) {
+    (void)sub;
+    outInsts.push_back(mc::MCInstBuilder(riscv::SUB)
+                           .addReg(dstReg)
+                           .addReg(lhsReg)
+                           .addReg(rhsReg));
+  } else if (auto *eq = dynamic_cast<ir::EqOp *>(binOp)) {
+    (void)eq;
+    outInsts.push_back(mc::MCInstBuilder(riscv::XOR)
+                           .addReg(dstReg)
+                           .addReg(lhsReg)
+                           .addReg(rhsReg));
+    outInsts.push_back(
+        mc::MCInstBuilder(riscv::SEQZ).addReg(dstReg).addReg(dstReg));
+  }
+  value2RegMap[binOp->getResult()] = dstReg;
+}
+
+Register RISCVInstrInfo::lowerOperand(ir::Value *val,
+                                      std::vector<mc::MCInst> &outInsts) {
+  assert(val && "Value is null");
+  // If the value is already allocated a register, reuse it.
+  if (!val->isInteger()) {
+    auto it = value2RegMap.find(val);
+    assert(it != value2RegMap.end() && "Value not found in register map");
+    return it->second;
+  }
+
+  int imm = static_cast<Integer *>(val)->getValue();
+  assert(value2RegMap.find(val) == value2RegMap.end() &&
+         "Value is already allocated a register");
+  if (imm == 0) {
+    // `0` is a special immediate value that can be directly mapped to the ZERO
+    // register.
+    value2RegMap.insert({val, riscv::ZERO});
+    return riscv::ZERO;
+  }
+  // LI dst, imm
+  Register dst = allocateNewRegister();
+  value2RegMap.insert({val, dst});
+  outInsts.push_back(mc::MCInstBuilder(riscv::LI).addReg(dst).addImm(imm));
+  return dst;
 }
 
 std::string_view getRegisterName(Register reg) {
@@ -46,6 +111,16 @@ std::string_view getRegisterName(Register reg) {
     return it->second;
   }
   assert(false && "Unknown register");
+}
+
+std::string_view getOpTypeName(OpType op) {
+  static std::unordered_map<OpType, std::string_view> opNames = {
+      {LI, "li"},   {RET, "ret"},   {SUB, "sub"},
+      {XOR, "xor"}, {SEQZ, "seqz"}, {MV, "mv"}};
+  if (auto it = opNames.find(op); it != opNames.end()) {
+    return it->second;
+  }
+  assert(false && "Unknown OpType");
 }
 
 } // namespace riscv
