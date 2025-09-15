@@ -90,6 +90,7 @@ public:
   }
   size_t getNumOperands() const { return operands.size(); }
 
+  const std::vector<MCOperand> &getOperands() const { return operands; }
   std::vector<MCOperand> &getOperands() { return operands; }
   void addOperand(const MCOperand &op) { operands.push_back(op); }
 

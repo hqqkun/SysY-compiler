@@ -2,6 +2,7 @@
 #define __TARGET_RISCV_RISCVINSTRINFO_H__
 
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 #include "IR/Operation.h"
@@ -13,10 +14,15 @@ namespace riscv {
 enum OpType {
   LI,  // Load Immediate
   RET, // Return
+  SUB,
+  XOR,
+  SEQZ,
+  MV,
   // TODO: Add more RISC-V instruction op types as needed.
 };
 
 enum Register {
+  UNKNOWN = -1,
   ZERO = 0, // Hard-wired zero
   RA = 1,   // Return address
   SP = 2,   // Stack pointer
@@ -55,9 +61,16 @@ enum Register {
 class RISCVInstrInfo {
 public:
   void lowerReturn(ir::ReturnOp *retOp, std::vector<mc::MCInst> &outInsts);
+  void lowerBinaryOp(ir::BinaryOp *binOp, std::vector<mc::MCInst> &outInsts);
+  void resetRegMap() { value2RegMap.clear(); }
+
+private:
+  std::unordered_map<ir::Value *, Register> value2RegMap;
+  Register lowerOperand(ir::Value *val, std::vector<mc::MCInst> &outInsts);
 };
 
 std::string_view getRegisterName(Register reg);
+std::string_view getOpTypeName(OpType op);
 
 } // namespace riscv
 } // namespace target

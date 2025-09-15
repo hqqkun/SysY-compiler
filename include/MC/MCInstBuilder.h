@@ -13,12 +13,12 @@ public:
   explicit MCInstBuilder(unsigned opType) { inst.setOpType(opType); }
 
   MCInstBuilder &addImm(int32_t imm) {
-    inst.getOperands().push_back(MCOperand::createImm(imm));
+    inst.addOperand(MCOperand::createImm(imm));
     return *this;
   }
 
   MCInstBuilder &addReg(const MCRegister &reg) {
-    inst.getOperands().push_back(MCOperand::createReg(reg));
+    inst.addOperand(MCOperand::createReg(reg));
     return *this;
   }
 

@@ -25,22 +25,25 @@ void RISCVAsmPrinter::emitFunction(const ir::Function *func,
 
 void RISCVAsmPrinter::emitInstructions(const std::vector<mc::MCInst> &instrs) {
   for (const mc::MCInst &instr : instrs) {
-    switch (instr.getOpType()) {
-    case riscv::LI:
-      // TODO: make the verify before this function.
-      assert(instr.getNumOperands() == 2 &&
-             "LI instruction must have 2 operands");
-      assert(instr.getOperand(0).isReg() && "First operand must be a register");
-      assert(instr.getOperand(1).isImm() &&
-             "Second operand must be an immediate");
-      out << "\tli "
-          << getRegisterName(
-                 static_cast<Register>(instr.getOperand(0).getReg().id()))
-          << ", " << instr.getOperand(1).getImm() << "\n";
-      break;
-    case riscv::RET:
-      out << "\tret\n";
-      break;
+    auto opType = static_cast<OpType>(instr.getOpType());
+    out << "\t" << getOpTypeName(opType) << "\t";
+    emitOperands(instr.getOperands());
+    out << "\n";
+  }
+}
+
+void RISCVAsmPrinter::emitOperands(const std::vector<mc::MCOperand> &operands) {
+  for (size_t i = 0; i < operands.size(); ++i) {
+    if (i > 0) {
+      out << ", ";
+    }
+    const mc::MCOperand &op = operands[i];
+    if (op.isReg()) {
+      out << getRegisterName(static_cast<Register>(op.getReg().id()));
+    } else if (op.isImm()) {
+      out << op.getImm();
+    } else {
+      assert(false && "Unsupported operand type");
     }
   }
 }
