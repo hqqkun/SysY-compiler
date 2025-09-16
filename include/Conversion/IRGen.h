@@ -30,6 +30,8 @@ private:
                               ast::UnaryExpAST *unaryExprAST);
   ir::Value *convertPrimaryExpr(ir::IRBuilder &builder,
                                 ast::PrimaryExpAST *primaryExpAST);
+  ir::Value *convertAddExpr(ir::IRBuilder &builder, ast::AddExpAST *addExpAST);
+  ir::Value *convertMulExpr(ir::IRBuilder &builder, ast::MulExpAST *mulExpAST);
 };
 
 } // namespace conversion

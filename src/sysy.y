@@ -30,12 +30,12 @@ void yyerror(std::unique_ptr<ast::BaseAST>& ast, const char* s);
 }
 
 
-%token INT RETURN
+%token INT RETURN T_MUL T_DIV T_MOD T_ADD T_SUB T_BANG
 %token <int_val> INT_CONST
 %token <str_val> IDENT
 
-%type <op> UnaryOp
-%type <ast_val> FuncDef FuncType Block Stmt EXP PrimaryExp UnaryExp
+%type <op> UnaryOp MulOp AddOp
+%type <ast_val> FuncDef FuncType Block Stmt EXP PrimaryExp UnaryExp MulExp AddExp
 %type <int_val> Number
 
 %%
@@ -85,11 +85,12 @@ Stmt
     ;
 
 EXP
-    : UnaryExp {
+    : AddExp {
       auto ast = new ast::ExprAST();
-      ast->unaryExp = std::unique_ptr<ast::BaseAST>($1);
+      ast->addExp = std::unique_ptr<ast::BaseAST>($1);
       $$ = ast;
     }
+    ;
 
 PrimaryExp
     : '(' EXP ')' {
@@ -110,11 +111,50 @@ UnaryExp
       auto exp = std::unique_ptr<ast::BaseAST>($2);
       $$ = new ast::UnaryExpAST($1, std::move(exp));
     }
+    ;
 
+AddExp
+    : MulExp {
+      auto exp = std::unique_ptr<ast::BaseAST>($1);
+      $$ = new ast::AddExpAST(std::move(exp));
+    }
+    | AddExp AddOp MulExp {
+      auto left = std::unique_ptr<ast::BaseAST>($1);
+      auto right = std::unique_ptr<ast::BaseAST>($3);
+      $$ = new ast::AddExpAST(std::move(left), $2, std::move(right));
+    }
+    ;
+
+MulExp
+    : UnaryExp {
+      auto exp = std::unique_ptr<ast::BaseAST>($1);
+      $$ = new ast::MulExpAST(std::move(exp));
+    }
+    | MulExp MulOp UnaryExp {
+      auto left = std::unique_ptr<ast::BaseAST>($1);
+      auto right = std::unique_ptr<ast::BaseAST>($3);
+      $$ = new ast::MulExpAST(std::move(left), $2, std::move(right));
+    }
+    ;
+
+
+
+// Operators
 UnaryOp
-    : '+' { $$ = ast::Op::PLUS; }
-    | '-' { $$ = ast::Op::MINUS; }
-    | '!' { $$ = ast::Op::BANG; }
+    : T_ADD { $$ = ast::Op::PLUS; }
+    | T_SUB { $$ = ast::Op::MINUS; }
+    | T_BANG { $$ = ast::Op::BANG; }
+    ;
+
+MulOp
+    : T_MUL { $$ = ast::Op::MUL; }
+    | T_DIV { $$ = ast::Op::DIV; }
+    | T_MOD { $$ = ast::Op::MOD; }
+    ;
+
+AddOp
+    : T_ADD { $$ = ast::Op::PLUS; }
+    | T_SUB { $$ = ast::Op::MINUS; }
     ;
 
 Number

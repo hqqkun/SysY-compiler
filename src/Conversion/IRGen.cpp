@@ -15,15 +15,12 @@ ir::Value *IRGen::convertUnaryExpr(ir::IRBuilder &builder,
                                    UnaryExpAST *unaryExprAST) {
   assert(unaryExprAST && "Unary expression AST cannot be null");
   if (unaryExprAST->isPrimary()) {
-    PrimaryExpAST *primaryExpAST =
-        dynamic_cast<PrimaryExpAST *>(unaryExprAST->primaryExp.get());
-    assert(primaryExpAST && "Primary expression AST cannot be null");
-    return convertPrimaryExpr(builder, primaryExpAST);
+    return convertPrimaryExpr(
+        builder, dynamic_cast<PrimaryExpAST *>(unaryExprAST->primaryExp.get()));
   } else if (unaryExprAST->isUnaryOp()) {
-    UnaryExpAST *childUnaryExpAST =
-        dynamic_cast<UnaryExpAST *>(unaryExprAST->childUnaryExp.get());
-    assert(childUnaryExpAST && "Child unary expression AST cannot be null");
-    ir::Value *childValue = convertUnaryExpr(builder, childUnaryExpAST);
+    ir::Value *childValue = convertUnaryExpr(
+        builder,
+        dynamic_cast<UnaryExpAST *>(unaryExprAST->childUnaryExp.get()));
     switch (unaryExprAST->unaryOp) {
       case Op::PLUS:
         return childValue; // Unary plus is a no-op.
@@ -35,28 +32,87 @@ ir::Value *IRGen::convertUnaryExpr(ir::IRBuilder &builder,
         ir::Integer *zero = ir::Integer::get(builder.getContext(), 0, 32);
         return builder.create<ir::EqOp>(childValue, zero)->getResult();
       }
+      default: {
+        assert(false && "Unknown unary operator");
+        return nullptr;
+      }
     }
   } else {
     assert(false && "Unknown unary expression type");
+    return nullptr;
   }
-  return nullptr;
 }
 
 ir::Value *IRGen::convertExpr(ir::IRBuilder &builder, ExprAST *exprAST) {
   assert(exprAST && "Expression AST cannot be null");
-  UnaryExpAST *unaryExprAST =
-      dynamic_cast<UnaryExpAST *>(exprAST->unaryExp.get());
-  assert(unaryExprAST && "Only unary expressions are supported");
-  return convertUnaryExpr(builder, unaryExprAST);
+  return convertAddExpr(builder,
+                        dynamic_cast<AddExpAST *>(exprAST->addExp.get()));
+}
+
+ir::Value *IRGen::convertAddExpr(ir::IRBuilder &builder,
+                                 ast::AddExpAST *addExpAST) {
+  assert(addExpAST && "Add expression AST cannot be null");
+  if (addExpAST->isSingle()) {
+    return convertMulExpr(
+        builder, dynamic_cast<MulExpAST *>(addExpAST->singleExp.get()));
+  } else if (addExpAST->isComposite()) {
+    auto &p = addExpAST->compositeExp;
+    ir::Value *lhs =
+        convertAddExpr(builder, dynamic_cast<AddExpAST *>(p.first.get()));
+    ir::Value *rhs =
+        convertMulExpr(builder, dynamic_cast<MulExpAST *>(p.second.get()));
+    switch (addExpAST->addOp) {
+      case Op::PLUS:
+        return builder.create<ir::AddOp>(lhs, rhs)->getResult();
+      case Op::MINUS:
+        return builder.create<ir::SubOp>(lhs, rhs)->getResult();
+      default: {
+        assert(false && "Unknown add operator");
+        return nullptr;
+      }
+    }
+  } else {
+    assert(false && "Unknown add expression type");
+    return nullptr;
+  }
+}
+
+ir::Value *IRGen::convertMulExpr(ir::IRBuilder &builder,
+                                 ast::MulExpAST *mulExpAST) {
+  assert(mulExpAST && "Mul expression AST cannot be null");
+  if (mulExpAST->isSingle()) {
+    return convertUnaryExpr(
+        builder, dynamic_cast<UnaryExpAST *>(mulExpAST->singleExp.get()));
+  } else if (mulExpAST->isComposite()) {
+    auto &p = mulExpAST->compositeExp;
+    ir::Value *lhs =
+        convertMulExpr(builder, dynamic_cast<MulExpAST *>(p.first.get()));
+    ir::Value *rhs =
+        convertUnaryExpr(builder, dynamic_cast<UnaryExpAST *>(p.second.get()));
+    switch (mulExpAST->mulOp) {
+      case Op::MUL:
+        return builder.create<ir::MulOp>(lhs, rhs)->getResult();
+      case Op::DIV:
+        return builder.create<ir::DivOp>(lhs, rhs)->getResult();
+      case Op::MOD:
+        return builder.create<ir::ModOp>(lhs, rhs)->getResult();
+      default: {
+        assert(false && "Unknown mul operator");
+        return nullptr;
+      }
+    }
+  } else {
+    assert(false && "Unknown mul expression type");
+    return nullptr;
+  }
 }
 
 ir::Value *IRGen::convertPrimaryExpr(ir::IRBuilder &builder,
                                      PrimaryExpAST *primaryExpAST) {
   assert(primaryExpAST && "Primary expression AST cannot be null");
   if (primaryExpAST->isExp()) {
-    ExprAST *innerExp = dynamic_cast<ExprAST *>(primaryExpAST->exp.get());
-    assert(innerExp && "Inner expression AST cannot be null");
-    return convertExpr(builder, innerExp);
+    return convertExpr(builder,
+                       dynamic_cast<ExprAST *>(primaryExpAST->exp.get()));
   } else if (primaryExpAST->isNumber()) {
     return ir::Integer::get(builder.getContext(), primaryExpAST->number, 32);
   } else {
@@ -75,9 +131,9 @@ ir::FunctionType *IRGen::convertFunctionType(FuncTypeAST *funcTypeAST) {
 void IRGen::convertStmt(ir::IRBuilder &builder, StmtAST *stmtAST) {
   // Assume is a return stmt.
   assert(stmtAST && "Statement AST cannot be null");
-  ExprAST *exprAST = dynamic_cast<ExprAST *>(stmtAST->exp.get());
-  assert(exprAST && "Only return statements with expressions are supported");
-  ir::Value *returnVal = convertExpr(builder, exprAST);
+  ir::Value *returnVal =
+      convertExpr(builder, dynamic_cast<ExprAST *>(stmtAST->exp.get()));
+  assert(returnVal && "Return value cannot be null");
   builder.create<ir::ReturnOp>(returnVal);
 }
 
@@ -88,17 +144,17 @@ ir::BasicBlock *IRGen::convertBlock(BlockAST *blockAST) {
   ir::BasicBlock *block = ir::BasicBlock::create(context, "entry");
   ir::IRBuilder builder(context);
   builder.setInsertPoint(block);
-  if (auto stmt = dynamic_cast<StmtAST *>(blockAST->stmt.get())) {
+  if (auto *stmt = dynamic_cast<StmtAST *>(blockAST->stmt.get())) {
     convertStmt(builder, stmt);
   }
   return block;
 }
 
 ir::Function *IRGen::generate(std::unique_ptr<ast::BaseAST> &ast) {
-  CompUnitAST *compUnit = dynamic_cast<CompUnitAST *>(ast.get());
-  FuncDefAST *funcDef =
+  auto *compUnit = dynamic_cast<CompUnitAST *>(ast.get());
+  auto *funcDef =
       compUnit ? dynamic_cast<FuncDefAST *>(compUnit->funcDef.get()) : nullptr;
-  FuncTypeAST *funcTypeAST =
+  auto *funcTypeAST =
       funcDef ? dynamic_cast<FuncTypeAST *>(funcDef->funcType.get()) : nullptr;
   auto funcType = funcTypeAST ? convertFunctionType(funcTypeAST) : nullptr;
 
@@ -108,7 +164,7 @@ ir::Function *IRGen::generate(std::unique_ptr<ast::BaseAST> &ast) {
   ir::IRBuilder builder(context);
   ir::Function *function =
       ir::Function::create(context, funcDef->ident, funcType);
-  if (ir::BasicBlock *entryBlock =
+  if (auto *entryBlock =
           convertBlock(dynamic_cast<BlockAST *>(funcDef->block.get()))) {
     function->addBlock(entryBlock);
   }

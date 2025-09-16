@@ -61,6 +61,24 @@ public:
   std::string_view getOpName() const override { return "eq"; }
 };
 
+class MulOp : public BinaryOp {
+public:
+  explicit MulOp(IRContext &context, Value *lhs, Value *rhs);
+  std::string_view getOpName() const override { return "mul"; }
+};
+
+class DivOp : public BinaryOp {
+public:
+  explicit DivOp(IRContext &context, Value *lhs, Value *rhs);
+  std::string_view getOpName() const override { return "div"; }
+};
+
+class ModOp : public BinaryOp {
+public:
+  explicit ModOp(IRContext &context, Value *lhs, Value *rhs);
+  std::string_view getOpName() const override { return "mod"; }
+};
+
 class ReturnOp : public Operation {
 public:
   explicit ReturnOp(IRContext &context, Value *retVal = nullptr);

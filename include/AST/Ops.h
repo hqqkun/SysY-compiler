@@ -8,6 +8,9 @@ enum class Op {
   PLUS,
   MINUS,
   BANG,
+  DIV,
+  MUL,
+  MOD,
 };
 
 inline std::ostream &operator<<(std::ostream &os, const Op &op) {
@@ -20,6 +23,15 @@ inline std::ostream &operator<<(std::ostream &os, const Op &op) {
       break;
     case Op::BANG:
       os << "BANG";
+      break;
+    case Op::DIV:
+      os << "DIV";
+      break;
+    case Op::MUL:
+      os << "MUL";
+      break;
+    case Op::MOD:
+      os << "MOD";
       break;
   }
   return os;
