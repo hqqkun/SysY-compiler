@@ -11,7 +11,6 @@
 
 namespace ir {
 class Operation;
-
 class Value : public IRObject {
 public:
   explicit Value() = delete;
@@ -28,6 +27,7 @@ protected:
   ValueKind getKind() const { return _kind; }
   Type *_type;
   ValueKind _kind;
+  // TODO: Support users of this value.
 };
 
 class Integer : public Value {
