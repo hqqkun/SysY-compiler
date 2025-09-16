@@ -35,6 +35,12 @@ Hexadecimal 0[xX][0-9a-fA-F]+
 {Decimal}       { yylval.int_val = strtol(yytext, nullptr, 0); return INT_CONST; }
 {Octal}         { yylval.int_val = strtol(yytext, nullptr, 0); return INT_CONST; }
 {Hexadecimal}   { yylval.int_val = strtol(yytext, nullptr, 0); return INT_CONST; }
+"*"             { return T_MUL; }
+"/"             { return T_DIV; }
+"%"             { return T_MOD; }
+"+"             { return T_ADD; }
+"-"             { return T_SUB; }
+"!"             { return T_BANG; }
 .               {return yytext[0]; }
 
 %%

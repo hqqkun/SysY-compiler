@@ -8,6 +8,7 @@
 #include "AST/Type.h"
 
 namespace ast {
+using ASTPtr = std::unique_ptr<class BaseAST>;
 class BaseAST {
 public:
   virtual ~BaseAST() = default;
@@ -16,15 +17,15 @@ public:
 
 class CompUnitAST : public BaseAST {
 public:
-  std::unique_ptr<BaseAST> funcDef;
+  ASTPtr funcDef;
   void dump() const override;
 };
 
 class FuncDefAST : public BaseAST {
 public:
-  std::unique_ptr<BaseAST> funcType;
+  ASTPtr funcType;
   std::string ident;
-  std::unique_ptr<BaseAST> block;
+  ASTPtr block;
   void dump() const override;
 };
 
@@ -36,19 +37,19 @@ public:
 
 class BlockAST : public BaseAST {
 public:
-  std::unique_ptr<BaseAST> stmt;
+  ASTPtr stmt;
   void dump() const override;
 };
 
 class StmtAST : public BaseAST {
 public:
-  std::unique_ptr<BaseAST> exp;
+  ASTPtr exp;
   void dump() const override;
 };
 
 class ExprAST : public BaseAST {
 public:
-  std::unique_ptr<BaseAST> unaryExp;
+  ASTPtr addExp;
   void dump() const override;
 };
 
@@ -56,12 +57,11 @@ public:
 class PrimaryExpAST : public BaseAST {
 public:
   int number;
-  std::unique_ptr<BaseAST> exp;
+  ASTPtr exp;
   void dump() const override;
 
   PrimaryExpAST(int num) : number(num), type(Type::NUMBER) {}
-  PrimaryExpAST(std::unique_ptr<BaseAST> e)
-      : exp(std::move(e)), type(Type::EXP) {}
+  PrimaryExpAST(ASTPtr e) : exp(std::move(e)), type(Type::EXP) {}
   bool isNumber() const { return type == Type::NUMBER; }
   bool isExp() const { return type == Type::EXP; }
 
@@ -72,15 +72,15 @@ private:
 // UnaryExp ::= PrimaryExp | UnaryOp UnaryExp
 class UnaryExpAST : public BaseAST {
 public:
-  std::unique_ptr<BaseAST> primaryExp;
+  ASTPtr primaryExp;
   Op unaryOp;
-  std::unique_ptr<BaseAST> childUnaryExp;
+  ASTPtr childUnaryExp;
   void dump() const override;
 
-  UnaryExpAST(std::unique_ptr<BaseAST> primary)
+  UnaryExpAST(ASTPtr primary)
       : primaryExp(std::move(primary)), type(Type::PRIMARY) {}
 
-  UnaryExpAST(Op op, std::unique_ptr<BaseAST> child)
+  UnaryExpAST(Op op, ASTPtr child)
       : unaryOp(op), childUnaryExp(std::move(child)), type(Type::UNARY_OP) {}
 
   bool isPrimary() const { return type == Type::PRIMARY; }
@@ -88,6 +88,46 @@ public:
 
 private:
   enum class Type { PRIMARY, UNARY_OP } type;
+};
+
+// AddExp ::= MulExp | AddExp ("+" | "-") MulExp
+class AddExpAST : public BaseAST {
+public:
+  ASTPtr singleExp;
+  std::pair<ASTPtr, ASTPtr> compositeExp;
+  Op addOp;
+  void dump() const override;
+
+  AddExpAST(ASTPtr single) : singleExp(std::move(single)), type(Type::SINGLE) {}
+  AddExpAST(ASTPtr lhs, Op oper, ASTPtr rhs)
+      : compositeExp({std::move(lhs), std::move(rhs)}), addOp(oper),
+        type(Type::COMPOSITE) {}
+
+  bool isSingle() const { return type == Type::SINGLE; }
+  bool isComposite() const { return type == Type::COMPOSITE; }
+
+private:
+  enum class Type { SINGLE, COMPOSITE } type;
+};
+
+// MulExp ::= UnaryExp | MulExp ("*" | "/" | "%") UnaryExp
+class MulExpAST : public BaseAST {
+public:
+  ASTPtr singleExp;
+  std::pair<ASTPtr, ASTPtr> compositeExp;
+  Op mulOp;
+  void dump() const override;
+
+  MulExpAST(ASTPtr single) : singleExp(std::move(single)), type(Type::SINGLE) {}
+  MulExpAST(ASTPtr lhs, Op oper, ASTPtr rhs)
+      : compositeExp({std::move(lhs), std::move(rhs)}), mulOp(oper),
+        type(Type::COMPOSITE) {}
+
+  bool isSingle() const { return type == Type::SINGLE; }
+  bool isComposite() const { return type == Type::COMPOSITE; }
+
+private:
+  enum class Type { SINGLE, COMPOSITE } type;
 };
 
 } // namespace ast

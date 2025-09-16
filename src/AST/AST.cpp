@@ -53,8 +53,8 @@ void StmtAST::dump() const {
 
 void ExprAST::dump() const {
   std::cout << "ExprAST { ";
-  if (unaryExp) {
-    unaryExp->dump();
+  if (addExp) {
+    addExp->dump();
   }
   std::cout << " }";
 }
@@ -80,6 +80,36 @@ void UnaryExpAST::dump() const {
     childUnaryExp->dump();
   } else {
     assert(false && "Invalid UnaryExpAST");
+  }
+  std::cout << " }";
+}
+
+void AddExpAST::dump() const {
+  std::cout << "AddExpAST { ";
+  if (isSingle()) {
+    singleExp->dump();
+  } else {
+    std::cout << addOp << ": ";
+    std::cout << "( ";
+    compositeExp.first->dump();
+    std::cout << ", ";
+    compositeExp.second->dump();
+    std::cout << " )";
+  }
+  std::cout << " }";
+}
+
+void MulExpAST::dump() const {
+  std::cout << "MulExpAST { ";
+  if (isSingle()) {
+    singleExp->dump();
+  } else {
+    std::cout << mulOp << ": ";
+    std::cout << "( ";
+    compositeExp.first->dump();
+    std::cout << ", ";
+    compositeExp.second->dump();
+    std::cout << " )";
   }
   std::cout << " }";
 }

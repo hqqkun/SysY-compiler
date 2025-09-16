@@ -27,6 +27,24 @@ SubOp::SubOp(IRContext &context, Value *lhs, Value *rhs)
   result = context.create<OpResult>(this);
 }
 
+MulOp::MulOp(IRContext &context, Value *lhs, Value *rhs)
+    : BinaryOp(context, lhs, rhs) {
+  resultType = lhs->getType();
+  result = context.create<OpResult>(this);
+}
+
+DivOp::DivOp(IRContext &context, Value *lhs, Value *rhs)
+    : BinaryOp(context, lhs, rhs) {
+  resultType = lhs->getType();
+  result = context.create<OpResult>(this);
+}
+
+ModOp::ModOp(IRContext &context, Value *lhs, Value *rhs)
+    : BinaryOp(context, lhs, rhs) {
+  resultType = lhs->getType();
+  result = context.create<OpResult>(this);
+}
+
 EqOp::EqOp(IRContext &context, Value *lhs, Value *rhs)
     : BinaryOp(context, lhs, rhs) {
   // For accuracy, we assume comparison results in a boolean type.
