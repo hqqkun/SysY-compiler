@@ -1,6 +1,8 @@
 #include <cassert>
 #include <cstdint>
+#include <functional>
 #include <string_view>
+#include <typeindex>
 #include <unordered_map>
 #include <vector>
 
@@ -13,6 +15,43 @@ using namespace ir;
 
 namespace target {
 namespace riscv {
+
+using OpHandler = std::function<void(Register, Register, Register,
+                                     std::vector<mc::MCInst> &)>;
+
+/// Map from IR operation type to RISC-V instruction handler.
+static const std::unordered_map<std::type_index, OpHandler> opHandlers = {
+    {typeid(ir::AddOp),
+     [](Register dst, Register lhs, Register rhs, auto &insts) {
+       insts.push_back(
+           mc::MCInstBuilder(riscv::ADD).addReg(dst).addReg(lhs).addReg(rhs));
+     }},
+    {typeid(ir::SubOp),
+     [](Register dst, Register lhs, Register rhs, auto &insts) {
+       insts.push_back(
+           mc::MCInstBuilder(riscv::SUB).addReg(dst).addReg(lhs).addReg(rhs));
+     }},
+    {typeid(ir::MulOp),
+     [](Register dst, Register lhs, Register rhs, auto &insts) {
+       insts.push_back(
+           mc::MCInstBuilder(riscv::MUL).addReg(dst).addReg(lhs).addReg(rhs));
+     }},
+    {typeid(ir::DivOp),
+     [](Register dst, Register lhs, Register rhs, auto &insts) {
+       insts.push_back(
+           mc::MCInstBuilder(riscv::DIV).addReg(dst).addReg(lhs).addReg(rhs));
+     }},
+    {typeid(ir::ModOp),
+     [](Register dst, Register lhs, Register rhs, auto &insts) {
+       insts.push_back(
+           mc::MCInstBuilder(riscv::REM).addReg(dst).addReg(lhs).addReg(rhs));
+     }},
+    {typeid(ir::EqOp),
+     [](Register dst, Register lhs, Register rhs, auto &insts) {
+       insts.push_back(
+           mc::MCInstBuilder(riscv::XOR).addReg(dst).addReg(lhs).addReg(rhs));
+       insts.push_back(mc::MCInstBuilder(riscv::SEQZ).addReg(dst).addReg(dst));
+     }}};
 
 /// naive implementation of register allocation.
 Register allocateNewRegister() {
@@ -53,21 +92,10 @@ void RISCVInstrInfo::lowerBinaryOp(ir::BinaryOp *binOp,
   Register lhsReg = lowerOperand(lhs, outInsts);
   Register rhsReg = lowerOperand(rhs, outInsts);
   Register dstReg = allocateNewRegister();
-  if (auto *sub = dynamic_cast<ir::SubOp *>(binOp)) {
-    (void)sub;
-    outInsts.push_back(mc::MCInstBuilder(riscv::SUB)
-                           .addReg(dstReg)
-                           .addReg(lhsReg)
-                           .addReg(rhsReg));
-  } else if (auto *eq = dynamic_cast<ir::EqOp *>(binOp)) {
-    (void)eq;
-    outInsts.push_back(mc::MCInstBuilder(riscv::XOR)
-                           .addReg(dstReg)
-                           .addReg(lhsReg)
-                           .addReg(rhsReg));
-    outInsts.push_back(
-        mc::MCInstBuilder(riscv::SEQZ).addReg(dstReg).addReg(dstReg));
-  }
+
+  auto it = opHandlers.find(typeid(*binOp));
+  assert(it != opHandlers.end() && "Unsupported BinaryOp type");
+  it->second(dstReg, lhsReg, rhsReg, outInsts);
   value2RegMap[binOp->getResult()] = dstReg;
 }
 
@@ -114,9 +142,9 @@ std::string_view getRegisterName(Register reg) {
 }
 
 std::string_view getOpTypeName(OpType op) {
-  static std::unordered_map<OpType, std::string_view> opNames = {
-      {LI, "li"},   {RET, "ret"},   {SUB, "sub"},
-      {XOR, "xor"}, {SEQZ, "seqz"}, {MV, "mv"}};
+  static const std::unordered_map<OpType, std::string_view> opNames = {
+      {ADD, "add"}, {DIV, "div"}, {LI, "li"},     {MUL, "mul"}, {MV, "mv"},
+      {REM, "rem"}, {RET, "ret"}, {SEQZ, "seqz"}, {SUB, "sub"}, {XOR, "xor"}};
   if (auto it = opNames.find(op); it != opNames.end()) {
     return it->second;
   }

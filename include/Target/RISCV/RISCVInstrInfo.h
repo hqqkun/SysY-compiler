@@ -12,12 +12,16 @@ namespace target {
 namespace riscv {
 
 enum OpType {
-  LI,  // Load Immediate
+  ADD,
+  DIV,
+  LI, // Load Immediate
+  MUL,
+  MV,
+  REM,
   RET, // Return
+  SEQZ,
   SUB,
   XOR,
-  SEQZ,
-  MV,
   // TODO: Add more RISC-V instruction op types as needed.
 };
 
