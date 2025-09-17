@@ -41,6 +41,14 @@ Hexadecimal 0[xX][0-9a-fA-F]+
 "+"             { return T_ADD; }
 "-"             { return T_SUB; }
 "!"             { return T_BANG; }
+"<="            { return T_LE; }
+">="            { return T_GE; }
+"<"             { return T_LT; }
+">"             { return T_GT; }
+"=="            { return T_EQ; }
+"!="            { return T_NEQ; }
+"&&"            { return T_AND; }
+"||"            { return T_OR; }
 .               {return yytext[0]; }
 
 %%

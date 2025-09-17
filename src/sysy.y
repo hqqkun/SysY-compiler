@@ -30,12 +30,12 @@ void yyerror(std::unique_ptr<ast::BaseAST>& ast, const char* s);
 }
 
 
-%token INT RETURN T_MUL T_DIV T_MOD T_ADD T_SUB T_BANG
+%token INT RETURN T_MUL T_DIV T_MOD T_ADD T_SUB T_BANG T_LE T_GE T_LT T_GT T_EQ T_NEQ T_AND T_OR
 %token <int_val> INT_CONST
 %token <str_val> IDENT
 
-%type <op> UnaryOp MulOp AddOp
-%type <ast_val> FuncDef FuncType Block Stmt EXP PrimaryExp UnaryExp MulExp AddExp
+%type <op> UnaryOp MulOp AddOp RelOp EqOp LAndOp LOrOp
+%type <ast_val> FuncDef FuncType Block Stmt EXP PrimaryExp UnaryExp MulExp AddExp RelExp EqExp LAndExp LOrExp
 %type <int_val> Number
 
 %%
@@ -85,9 +85,9 @@ Stmt
     ;
 
 EXP
-    : AddExp {
+    : LOrExp {
       auto ast = new ast::ExprAST();
-      ast->addExp = std::unique_ptr<ast::BaseAST>($1);
+      ast->exp = std::unique_ptr<ast::BaseAST>($1);
       $$ = ast;
     }
     ;
@@ -113,18 +113,6 @@ UnaryExp
     }
     ;
 
-AddExp
-    : MulExp {
-      auto exp = std::unique_ptr<ast::BaseAST>($1);
-      $$ = new ast::AddExpAST(std::move(exp));
-    }
-    | AddExp AddOp MulExp {
-      auto left = std::unique_ptr<ast::BaseAST>($1);
-      auto right = std::unique_ptr<ast::BaseAST>($3);
-      $$ = new ast::AddExpAST(std::move(left), $2, std::move(right));
-    }
-    ;
-
 MulExp
     : UnaryExp {
       auto exp = std::unique_ptr<ast::BaseAST>($1);
@@ -137,7 +125,65 @@ MulExp
     }
     ;
 
+AddExp
+    : MulExp {
+      auto exp = std::unique_ptr<ast::BaseAST>($1);
+      $$ = new ast::AddExpAST(std::move(exp));
+    }
+    | AddExp AddOp MulExp {
+      auto left = std::unique_ptr<ast::BaseAST>($1);
+      auto right = std::unique_ptr<ast::BaseAST>($3);
+      $$ = new ast::AddExpAST(std::move(left), $2, std::move(right));
+    }
+    ;
 
+RelExp
+    : AddExp {
+      auto exp = std::unique_ptr<ast::BaseAST>($1);
+      $$ = new ast::RelExpAST(std::move(exp));
+    }
+    | RelExp RelOp AddExp {
+      auto left = std::unique_ptr<ast::BaseAST>($1);
+      auto right = std::unique_ptr<ast::BaseAST>($3);
+      $$ = new ast::RelExpAST(std::move(left), $2, std::move(right));
+    }
+    ;
+
+EqExp
+    : RelExp {
+      auto exp = std::unique_ptr<ast::BaseAST>($1);
+      $$ = new ast::EqExpAST(std::move(exp));
+    }
+    | EqExp EqOp RelExp {
+      auto left = std::unique_ptr<ast::BaseAST>($1);
+      auto right = std::unique_ptr<ast::BaseAST>($3);
+      $$ = new ast::EqExpAST(std::move(left), $2, std::move(right));
+    }
+    ;
+
+LAndExp
+    : EqExp {
+      auto exp = std::unique_ptr<ast::BaseAST>($1);
+      $$ = new ast::LAndExpAST(std::move(exp));
+    }
+    | LAndExp LAndOp EqExp {
+      auto left = std::unique_ptr<ast::BaseAST>($1);
+      auto right = std::unique_ptr<ast::BaseAST>($3);
+      $$ = new ast::LAndExpAST(std::move(left), $2, std::move(right));
+    }
+    ;
+
+LOrExp
+    : LAndExp {
+      auto exp = std::unique_ptr<ast::BaseAST>($1);
+      $$ = new ast::LOrExpAST(std::move(exp));
+    }
+    | LOrExp LOrOp LAndExp {
+      auto left = std::unique_ptr<ast::BaseAST>($1);
+      auto right = std::unique_ptr<ast::BaseAST>($3);
+      $$ = new ast::LOrExpAST(std::move(left), $2, std::move(right));
+    }
+    ;
 
 // Operators
 UnaryOp
@@ -155,6 +201,26 @@ MulOp
 AddOp
     : T_ADD { $$ = ast::Op::PLUS; }
     | T_SUB { $$ = ast::Op::MINUS; }
+    ;
+
+RelOp
+    : T_LT { $$ = ast::Op::LT; }
+    | T_GT { $$ = ast::Op::GT; }
+    | T_LE { $$ = ast::Op::LE; }
+    | T_GE { $$ = ast::Op::GE; }
+    ;
+
+EqOp
+    : T_EQ { $$ = ast::Op::EQ; }
+    | T_NEQ { $$ = ast::Op::NEQ; }
+    ;
+
+LAndOp
+    : T_AND { $$ = ast::Op::LAND; }
+    ;
+
+LOrOp
+    : T_OR { $$ = ast::Op::LOR; }
     ;
 
 Number

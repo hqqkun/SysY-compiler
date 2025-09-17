@@ -53,8 +53,8 @@ void StmtAST::dump() const {
 
 void ExprAST::dump() const {
   std::cout << "ExprAST { ";
-  if (addExp) {
-    addExp->dump();
+  if (exp) {
+    exp->dump();
   }
   std::cout << " }";
 }
