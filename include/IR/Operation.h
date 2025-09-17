@@ -31,8 +31,8 @@ public:
 
 protected:
   std::vector<Value *> operands;
-  Type *resultType;
-  OpResult *result;
+  Type *resultType = nullptr;
+  OpResult *result = nullptr;
 };
 
 class BinaryOp : public Operation {
@@ -61,6 +61,12 @@ public:
   std::string_view getOpName() const override { return "eq"; }
 };
 
+class NeqOp : public BinaryOp {
+public:
+  explicit NeqOp(IRContext &context, Value *lhs, Value *rhs);
+  std::string_view getOpName() const override { return "ne"; }
+};
+
 class MulOp : public BinaryOp {
 public:
   explicit MulOp(IRContext &context, Value *lhs, Value *rhs);
@@ -77,6 +83,42 @@ class ModOp : public BinaryOp {
 public:
   explicit ModOp(IRContext &context, Value *lhs, Value *rhs);
   std::string_view getOpName() const override { return "mod"; }
+};
+
+class LessOp : public BinaryOp {
+public:
+  explicit LessOp(IRContext &context, Value *lhs, Value *rhs);
+  std::string_view getOpName() const override { return "lt"; }
+};
+
+class LessEqualOp : public BinaryOp {
+public:
+  explicit LessEqualOp(IRContext &context, Value *lhs, Value *rhs);
+  std::string_view getOpName() const override { return "le"; }
+};
+
+class GreaterOp : public BinaryOp {
+public:
+  explicit GreaterOp(IRContext &context, Value *lhs, Value *rhs);
+  std::string_view getOpName() const override { return "gt"; }
+};
+
+class GreaterEqualOp : public BinaryOp {
+public:
+  explicit GreaterEqualOp(IRContext &context, Value *lhs, Value *rhs);
+  std::string_view getOpName() const override { return "ge"; }
+};
+
+class BitAndOp : public BinaryOp {
+public:
+  explicit BitAndOp(IRContext &context, Value *lhs, Value *rhs);
+  std::string_view getOpName() const override { return "and"; }
+};
+
+class BitOrOp : public BinaryOp {
+public:
+  explicit BitOrOp(IRContext &context, Value *lhs, Value *rhs);
+  std::string_view getOpName() const override { return "or"; }
 };
 
 class ReturnOp : public Operation {

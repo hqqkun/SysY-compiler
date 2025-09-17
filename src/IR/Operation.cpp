@@ -52,6 +52,48 @@ EqOp::EqOp(IRContext &context, Value *lhs, Value *rhs)
   result = context.create<OpResult>(this);
 }
 
+NeqOp::NeqOp(IRContext &context, Value *lhs, Value *rhs)
+    : BinaryOp(context, lhs, rhs) {
+  resultType = IntegerType::get(context, 1);
+  result = context.create<OpResult>(this);
+}
+
+LessOp::LessOp(IRContext &context, Value *lhs, Value *rhs)
+    : BinaryOp(context, lhs, rhs) {
+  resultType = IntegerType::get(context, 1);
+  result = context.create<OpResult>(this);
+}
+
+LessEqualOp::LessEqualOp(IRContext &context, Value *lhs, Value *rhs)
+    : BinaryOp(context, lhs, rhs) {
+  resultType = IntegerType::get(context, 1);
+  result = context.create<OpResult>(this);
+}
+
+GreaterOp::GreaterOp(IRContext &context, Value *lhs, Value *rhs)
+    : BinaryOp(context, lhs, rhs) {
+  resultType = IntegerType::get(context, 1);
+  result = context.create<OpResult>(this);
+}
+
+GreaterEqualOp::GreaterEqualOp(IRContext &context, Value *lhs, Value *rhs)
+    : BinaryOp(context, lhs, rhs) {
+  resultType = IntegerType::get(context, 1);
+  result = context.create<OpResult>(this);
+}
+
+BitAndOp::BitAndOp(IRContext &context, Value *lhs, Value *rhs)
+    : BinaryOp(context, lhs, rhs) {
+  resultType = IntegerType::get(context, 32);
+  result = context.create<OpResult>(this);
+}
+
+BitOrOp::BitOrOp(IRContext &context, Value *lhs, Value *rhs)
+    : BinaryOp(context, lhs, rhs) {
+  resultType = IntegerType::get(context, 32);
+  result = context.create<OpResult>(this);
+}
+
 ReturnOp::ReturnOp(IRContext &context, Value *retVal) {
   if (retVal) {
     operands.emplace_back(retVal);

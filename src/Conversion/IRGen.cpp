@@ -11,6 +11,24 @@ using namespace ast;
 
 namespace conversion {
 
+ir::Value *IRGen::convertExpr(ir::IRBuilder &builder, ExprAST *exprAST) {
+  assert(exprAST && "Expression AST cannot be null");
+  return convertLOrExpr(builder, dynamic_cast<LOrExpAST *>(exprAST->exp.get()));
+}
+
+ir::Value *IRGen::convertPrimaryExpr(ir::IRBuilder &builder,
+                                     PrimaryExpAST *primaryExpAST) {
+  assert(primaryExpAST && "Primary expression AST cannot be null");
+  if (primaryExpAST->isExp()) {
+    return convertExpr(builder,
+                       dynamic_cast<ExprAST *>(primaryExpAST->exp.get()));
+  } else if (primaryExpAST->isNumber()) {
+    return ir::Integer::get(builder.getContext(), primaryExpAST->number, 32);
+  } else {
+    assert(false && "Unknown primary expression type");
+  }
+}
+
 ir::Value *IRGen::convertUnaryExpr(ir::IRBuilder &builder,
                                    UnaryExpAST *unaryExprAST) {
   assert(unaryExprAST && "Unary expression AST cannot be null");
@@ -43,81 +61,150 @@ ir::Value *IRGen::convertUnaryExpr(ir::IRBuilder &builder,
   }
 }
 
-ir::Value *IRGen::convertExpr(ir::IRBuilder &builder, ExprAST *exprAST) {
-  assert(exprAST && "Expression AST cannot be null");
-  return convertAddExpr(builder,
-                        dynamic_cast<AddExpAST *>(exprAST->addExp.get()));
-}
+template <typename DerivedAST, typename NextAST,
+          ir::Value *(NextConvertFunc)(ir::IRBuilder &, NextAST *)>
+ir::Value *IRGen::convertBinaryExp(ir::IRBuilder &builder, DerivedAST *ast,
+                                   OpHandler op_handler) {
+  assert(ast && "Expression AST cannot be null");
 
-ir::Value *IRGen::convertAddExpr(ir::IRBuilder &builder,
-                                 ast::AddExpAST *addExpAST) {
-  assert(addExpAST && "Add expression AST cannot be null");
-  if (addExpAST->isSingle()) {
-    return convertMulExpr(
-        builder, dynamic_cast<MulExpAST *>(addExpAST->singleExp.get()));
-  } else if (addExpAST->isComposite()) {
-    auto &p = addExpAST->compositeExp;
-    ir::Value *lhs =
-        convertAddExpr(builder, dynamic_cast<AddExpAST *>(p.first.get()));
-    ir::Value *rhs =
-        convertMulExpr(builder, dynamic_cast<MulExpAST *>(p.second.get()));
-    switch (addExpAST->binOp) {
-      case Op::PLUS:
-        return builder.create<ir::AddOp>(lhs, rhs)->getResult();
-      case Op::MINUS:
-        return builder.create<ir::SubOp>(lhs, rhs)->getResult();
-      default: {
-        assert(false && "Unknown add operator");
-        return nullptr;
-      }
-    }
+  if (ast->isSingle()) {
+    NextAST *next_ast = dynamic_cast<NextAST *>(ast->singleExp.get());
+    assert(next_ast && "Mismatched next-level AST type");
+    return NextConvertFunc(builder, next_ast);
+  } else if (ast->isComposite()) {
+    auto &[lhs_ast, rhs_ast] = ast->compositeExp;
+
+    DerivedAST *lhs_derived = dynamic_cast<DerivedAST *>(lhs_ast.get());
+    assert(lhs_derived && "Mismatched LHS AST type");
+    ir::Value *lhs = convertBinaryExp<DerivedAST, NextAST, NextConvertFunc>(
+        builder, lhs_derived, op_handler);
+
+    NextAST *rhs_next = dynamic_cast<NextAST *>(rhs_ast.get());
+    assert(rhs_next && "Mismatched RHS AST type");
+    ir::Value *rhs = NextConvertFunc(builder, rhs_next);
+
+    // Callback for operation handling.
+    return op_handler(builder, ast->binOp, lhs, rhs);
   } else {
-    assert(false && "Unknown add expression type");
+    assert(false && "Unknown expression type");
     return nullptr;
   }
 }
 
 ir::Value *IRGen::convertMulExpr(ir::IRBuilder &builder,
                                  ast::MulExpAST *mulExpAST) {
-  assert(mulExpAST && "Mul expression AST cannot be null");
-  if (mulExpAST->isSingle()) {
-    return convertUnaryExpr(
-        builder, dynamic_cast<UnaryExpAST *>(mulExpAST->singleExp.get()));
-  } else if (mulExpAST->isComposite()) {
-    auto &p = mulExpAST->compositeExp;
-    ir::Value *lhs =
-        convertMulExpr(builder, dynamic_cast<MulExpAST *>(p.first.get()));
-    ir::Value *rhs =
-        convertUnaryExpr(builder, dynamic_cast<UnaryExpAST *>(p.second.get()));
-    switch (mulExpAST->binOp) {
-      case Op::MUL:
-        return builder.create<ir::MulOp>(lhs, rhs)->getResult();
-      case Op::DIV:
-        return builder.create<ir::DivOp>(lhs, rhs)->getResult();
-      case Op::MOD:
-        return builder.create<ir::ModOp>(lhs, rhs)->getResult();
-      default: {
-        assert(false && "Unknown mul operator");
-        return nullptr;
-      }
-    }
-  } else {
-    assert(false && "Unknown mul expression type");
-    return nullptr;
-  }
+  return convertBinaryExp<ast::MulExpAST, ast::UnaryExpAST,
+                          IRGen::convertUnaryExpr>(
+      builder, mulExpAST,
+      [](ir::IRBuilder &b, Op op, ir::Value *lhs,
+         ir::Value *rhs) -> ir::Value * {
+        switch (op) {
+          case Op::MUL:
+            return b.create<ir::MulOp>(lhs, rhs)->getResult();
+          case Op::DIV:
+            return b.create<ir::DivOp>(lhs, rhs)->getResult();
+          case Op::MOD:
+            return b.create<ir::ModOp>(lhs, rhs)->getResult();
+          default:
+            assert(false && "Unknown mul operator");
+            return nullptr;
+        }
+      });
 }
 
-ir::Value *IRGen::convertPrimaryExpr(ir::IRBuilder &builder,
-                                     PrimaryExpAST *primaryExpAST) {
-  assert(primaryExpAST && "Primary expression AST cannot be null");
-  if (primaryExpAST->isExp()) {
-    return convertExpr(builder,
-                       dynamic_cast<ExprAST *>(primaryExpAST->exp.get()));
-  } else if (primaryExpAST->isNumber()) {
-    return ir::Integer::get(builder.getContext(), primaryExpAST->number, 32);
-  } else {
-    assert(false && "Unknown primary expression type");
-  }
+ir::Value *IRGen::convertAddExpr(ir::IRBuilder &builder,
+                                 ast::AddExpAST *addExpAST) {
+  return convertBinaryExp<ast::AddExpAST, ast::MulExpAST,
+                          IRGen::convertMulExpr>(
+      builder, addExpAST,
+      [](ir::IRBuilder &b, Op op, ir::Value *lhs,
+         ir::Value *rhs) -> ir::Value * {
+        switch (op) {
+          case Op::PLUS:
+            return b.create<ir::AddOp>(lhs, rhs)->getResult();
+          case Op::MINUS:
+            return b.create<ir::SubOp>(lhs, rhs)->getResult();
+          default:
+            assert(false && "Unknown add operator");
+            return nullptr;
+        }
+      });
+}
+
+ir::Value *IRGen::convertRelExpr(ir::IRBuilder &builder,
+                                 ast::RelExpAST *relExpAST) {
+  return convertBinaryExp<ast::RelExpAST, ast::AddExpAST,
+                          IRGen::convertAddExpr>(
+      builder, relExpAST,
+      [](ir::IRBuilder &b, Op op, ir::Value *lhs,
+         ir::Value *rhs) -> ir::Value * {
+        switch (op) {
+          case Op::LT:
+            return b.create<ir::LessOp>(lhs, rhs)->getResult();
+          case Op::GT:
+            return b.create<ir::GreaterOp>(lhs, rhs)->getResult();
+          case Op::LE:
+            return b.create<ir::LessEqualOp>(lhs, rhs)->getResult();
+          case Op::GE:
+            return b.create<ir::GreaterEqualOp>(lhs, rhs)->getResult();
+          default:
+            assert(false && "Unknown relational operator");
+            return nullptr;
+        }
+      });
+}
+
+ir::Value *IRGen::convertEqExpr(ir::IRBuilder &builder,
+                                ast::EqExpAST *eqExpAST) {
+  return convertBinaryExp<ast::EqExpAST, ast::RelExpAST, IRGen::convertRelExpr>(
+      builder, eqExpAST,
+      [](ir::IRBuilder &b, Op op, ir::Value *lhs,
+         ir::Value *rhs) -> ir::Value * {
+        switch (op) {
+          case Op::EQ:
+            return b.create<ir::EqOp>(lhs, rhs)->getResult();
+          case Op::NEQ:
+            return b.create<ir::NeqOp>(lhs, rhs)->getResult();
+          default:
+            assert(false && "Unknown equality operator");
+            return nullptr;
+        }
+      });
+}
+
+ir::Value *IRGen::convertLAndExpr(ir::IRBuilder &builder,
+                                  ast::LAndExpAST *landExpAST) {
+  return convertBinaryExp<ast::LAndExpAST, ast::EqExpAST, IRGen::convertEqExpr>(
+      builder, landExpAST,
+      [](ir::IRBuilder &b, Op op, ir::Value *lhs,
+         ir::Value *rhs) -> ir::Value * {
+        if (op != Op::LAND) {
+          assert(false && "Unknown logical AND operator");
+          return nullptr;
+        }
+        ir::Value *zero = ir::Integer::get(b.getContext(), 0);
+        ir::Value *lhsBool = b.create<ir::NeqOp>(lhs, zero)->getResult();
+        ir::Value *rhsBool = b.create<ir::NeqOp>(rhs, zero)->getResult();
+        return b.create<ir::BitAndOp>(lhsBool, rhsBool)->getResult();
+      });
+}
+
+ir::Value *IRGen::convertLOrExpr(ir::IRBuilder &builder,
+                                 ast::LOrExpAST *lorExpAST) {
+  return convertBinaryExp<ast::LOrExpAST, ast::LAndExpAST,
+                          IRGen::convertLAndExpr>(
+      builder, lorExpAST,
+      [](ir::IRBuilder &b, Op op, ir::Value *lhs,
+         ir::Value *rhs) -> ir::Value * {
+        if (op != Op::LOR) {
+          assert(false && "Unknown logical OR operator");
+          return nullptr;
+        }
+        ir::Value *zero = ir::Integer::get(b.getContext(), 0);
+        ir::Value *lhsBool = b.create<ir::NeqOp>(lhs, zero)->getResult();
+        ir::Value *rhsBool = b.create<ir::NeqOp>(rhs, zero)->getResult();
+        return b.create<ir::BitOrOp>(lhsBool, rhsBool)->getResult();
+      });
 }
 
 ir::FunctionType *IRGen::convertFunctionType(FuncTypeAST *funcTypeAST) {

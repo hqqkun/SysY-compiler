@@ -50,7 +50,7 @@ public:
 
 class ExprAST : public BaseAST {
 public:
-  ASTPtr addExp;
+  ASTPtr exp;
   void dump() const override;
 };
 
@@ -130,7 +130,47 @@ private:
   std::string_view getASTNameImpl() const override { return "MulExpAST"; }
 };
 
+// RelExp ::= AddExp | RelExp ("<" | ">" | "<=" | ">=") AddExp
+class RelExpAST : public BinaryExpAST<RelExpAST> {
+public:
+  using BinaryExpAST<RelExpAST>::BinaryExpAST;
+
+private:
+  std::string_view getASTNameImpl() const override { return "RelExpAST"; }
+};
+
+// EqExp ::= RelExp | EqExp ("==" | "!=") RelExp
+class EqExpAST : public BinaryExpAST<EqExpAST> {
+public:
+  using BinaryExpAST<EqExpAST>::BinaryExpAST;
+
+private:
+  std::string_view getASTNameImpl() const override { return "EqExpAST"; }
+};
+
+// LAndExp ::= EqExp | LAndExp "&&" EqExp
+class LAndExpAST : public BinaryExpAST<LAndExpAST> {
+public:
+  using BinaryExpAST<LAndExpAST>::BinaryExpAST;
+
+private:
+  std::string_view getASTNameImpl() const override { return "LAndExpAST"; }
+};
+
+// LOrExp ::= LAndExp | LOrExp "||" LAndExp
+class LOrExpAST : public BinaryExpAST<LOrExpAST> {
+public:
+  using BinaryExpAST<LOrExpAST>::BinaryExpAST;
+
+private:
+  std::string_view getASTNameImpl() const override { return "LOrExpAST"; }
+};
+
 template class BinaryExpAST<AddExpAST>;
 template class BinaryExpAST<MulExpAST>;
+template class BinaryExpAST<RelExpAST>;
+template class BinaryExpAST<EqExpAST>;
+template class BinaryExpAST<LAndExpAST>;
+template class BinaryExpAST<LOrExpAST>;
 } // namespace ast
 #endif // __AST_AST_H__
