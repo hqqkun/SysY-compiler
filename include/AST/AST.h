@@ -3,6 +3,7 @@
 
 #include <memory>
 #include <string>
+#include <string_view>
 
 #include "AST/Ops.h"
 #include "AST/Type.h"
@@ -90,45 +91,46 @@ private:
   enum class Type { PRIMARY, UNARY_OP } type;
 };
 
-// AddExp ::= MulExp | AddExp ("+" | "-") MulExp
-class AddExpAST : public BaseAST {
+template <typename Derived> class BinaryExpAST : public BaseAST {
 public:
   ASTPtr singleExp;
   std::pair<ASTPtr, ASTPtr> compositeExp;
-  Op addOp;
-  void dump() const override;
+  Op binOp;
 
-  AddExpAST(ASTPtr single) : singleExp(std::move(single)), type(Type::SINGLE) {}
-  AddExpAST(ASTPtr lhs, Op oper, ASTPtr rhs)
-      : compositeExp({std::move(lhs), std::move(rhs)}), addOp(oper),
+  BinaryExpAST(ASTPtr single)
+      : singleExp(std::move(single)), type(Type::SINGLE) {}
+  BinaryExpAST(ASTPtr lhs, Op oper, ASTPtr rhs)
+      : compositeExp({std::move(lhs), std::move(rhs)}), binOp(oper),
         type(Type::COMPOSITE) {}
-
   bool isSingle() const { return type == Type::SINGLE; }
   bool isComposite() const { return type == Type::COMPOSITE; }
 
-private:
+  void dump() const override;
+
+protected:
   enum class Type { SINGLE, COMPOSITE } type;
+  virtual std::string_view getASTNameImpl() const = 0;
+};
+
+// AddExp ::= MulExp | AddExp ("+" | "-") MulExp
+class AddExpAST : public BinaryExpAST<AddExpAST> {
+public:
+  using BinaryExpAST<AddExpAST>::BinaryExpAST;
+
+private:
+  std::string_view getASTNameImpl() const override { return "AddExpAST"; }
 };
 
 // MulExp ::= UnaryExp | MulExp ("*" | "/" | "%") UnaryExp
-class MulExpAST : public BaseAST {
+class MulExpAST : public BinaryExpAST<MulExpAST> {
 public:
-  ASTPtr singleExp;
-  std::pair<ASTPtr, ASTPtr> compositeExp;
-  Op mulOp;
-  void dump() const override;
-
-  MulExpAST(ASTPtr single) : singleExp(std::move(single)), type(Type::SINGLE) {}
-  MulExpAST(ASTPtr lhs, Op oper, ASTPtr rhs)
-      : compositeExp({std::move(lhs), std::move(rhs)}), mulOp(oper),
-        type(Type::COMPOSITE) {}
-
-  bool isSingle() const { return type == Type::SINGLE; }
-  bool isComposite() const { return type == Type::COMPOSITE; }
+  using BinaryExpAST<MulExpAST>::BinaryExpAST;
 
 private:
-  enum class Type { SINGLE, COMPOSITE } type;
+  std::string_view getASTNameImpl() const override { return "MulExpAST"; }
 };
 
+template class BinaryExpAST<AddExpAST>;
+template class BinaryExpAST<MulExpAST>;
 } // namespace ast
 #endif // __AST_AST_H__

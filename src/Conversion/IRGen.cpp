@@ -61,7 +61,7 @@ ir::Value *IRGen::convertAddExpr(ir::IRBuilder &builder,
         convertAddExpr(builder, dynamic_cast<AddExpAST *>(p.first.get()));
     ir::Value *rhs =
         convertMulExpr(builder, dynamic_cast<MulExpAST *>(p.second.get()));
-    switch (addExpAST->addOp) {
+    switch (addExpAST->binOp) {
       case Op::PLUS:
         return builder.create<ir::AddOp>(lhs, rhs)->getResult();
       case Op::MINUS:
@@ -89,7 +89,7 @@ ir::Value *IRGen::convertMulExpr(ir::IRBuilder &builder,
         convertMulExpr(builder, dynamic_cast<MulExpAST *>(p.first.get()));
     ir::Value *rhs =
         convertUnaryExpr(builder, dynamic_cast<UnaryExpAST *>(p.second.get()));
-    switch (mulExpAST->mulOp) {
+    switch (mulExpAST->binOp) {
       case Op::MUL:
         return builder.create<ir::MulOp>(lhs, rhs)->getResult();
       case Op::DIV:

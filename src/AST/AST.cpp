@@ -84,27 +84,12 @@ void UnaryExpAST::dump() const {
   std::cout << " }";
 }
 
-void AddExpAST::dump() const {
-  std::cout << "AddExpAST { ";
+template <typename Derived> void BinaryExpAST<Derived>::dump() const {
+  std::cout << getASTNameImpl() << " { ";
   if (isSingle()) {
     singleExp->dump();
   } else {
-    std::cout << addOp << ": ";
-    std::cout << "( ";
-    compositeExp.first->dump();
-    std::cout << ", ";
-    compositeExp.second->dump();
-    std::cout << " )";
-  }
-  std::cout << " }";
-}
-
-void MulExpAST::dump() const {
-  std::cout << "MulExpAST { ";
-  if (isSingle()) {
-    singleExp->dump();
-  } else {
-    std::cout << mulOp << ": ";
+    std::cout << binOp << ": ";
     std::cout << "( ";
     compositeExp.first->dump();
     std::cout << ", ";
