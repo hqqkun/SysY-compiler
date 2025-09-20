@@ -91,7 +91,16 @@ void RISCVInstrInfo::lowerBinaryOp(ir::BinaryOp *binOp,
 
   Register lhsReg = lowerOperand(lhs, outInsts);
   Register rhsReg = lowerOperand(rhs, outInsts);
-  Register dstReg = allocateNewRegister();
+  Register dstReg = Register::UNKNOWN;
+
+  // We can optimize this if lrsReg or rhsReg has just one user.
+  if (lhs->getUsers().size() == 1 && lhsReg != Register::ZERO) {
+    dstReg = lhsReg;
+  } else if (rhs->getUsers().size() == 1 && rhsReg != Register::ZERO) {
+    dstReg = rhsReg;
+  } else {
+    dstReg = allocateNewRegister();
+  }
 
   auto it = opHandlers.find(typeid(*binOp));
   assert(it != opHandlers.end() && "Unsupported BinaryOp type");
@@ -110,14 +119,18 @@ Register RISCVInstrInfo::lowerOperand(ir::Value *val,
   }
 
   int imm = static_cast<Integer *>(val)->getValue();
-  assert(value2RegMap.find(val) == value2RegMap.end() &&
-         "Value is already allocated a register");
+  // `0` is a special immediate value that can be directly mapped to the ZERO
+  // register.
   if (imm == 0) {
-    // `0` is a special immediate value that can be directly mapped to the ZERO
-    // register.
     value2RegMap.insert({val, riscv::ZERO});
     return riscv::ZERO;
   }
+
+  auto it = value2RegMap.find(val);
+  if (it != value2RegMap.end()) {
+    return it->second;
+  }
+
   // LI dst, imm
   Register dst = allocateNewRegister();
   value2RegMap.insert({val, dst});

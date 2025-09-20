@@ -3,6 +3,7 @@
 
 #include <ostream>
 #include <string>
+#include <unordered_set>
 
 #include "IR/IRContext.h"
 #include "IR/Object.h"
@@ -19,6 +20,9 @@ public:
   bool isInteger() const { return getKind() == ValueKind::kInteger; }
   bool isOpResult() const { return getKind() == ValueKind::kOpResult; }
   bool isFuncArg() const { return getKind() == ValueKind::kFuncArg; }
+  const std::unordered_set<Operation *> &getUsers() const { return users; }
+  std::unordered_set<Operation *> &getUsers() { return users; }
+  void addUser(Operation *u) { users.insert(u); }
 
 protected:
   enum class ValueKind { kInvalid, kInteger, kOpResult, kFuncArg };
@@ -28,6 +32,7 @@ protected:
   Type *_type;
   ValueKind _kind;
   // TODO: Support users of this value.
+  std::unordered_set<Operation *> users;
 };
 
 class Integer : public Value {
