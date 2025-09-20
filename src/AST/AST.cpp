@@ -5,6 +5,13 @@
 #include "AST/Type.h"
 
 namespace ast {
+template class BinaryExpAST<AddExpAST>;
+template class BinaryExpAST<MulExpAST>;
+template class BinaryExpAST<RelExpAST>;
+template class BinaryExpAST<EqExpAST>;
+template class BinaryExpAST<LAndExpAST>;
+template class BinaryExpAST<LOrExpAST>;
+
 void CompUnitAST::dump() const {
   std::cout << "CompUnitAST { ";
   if (funcDef) {

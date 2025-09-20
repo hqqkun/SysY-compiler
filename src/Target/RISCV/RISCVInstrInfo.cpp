@@ -62,7 +62,6 @@ static const std::unordered_map<std::type_index, OpHandler> opHandlers = {
      [](Register dst, Register lhs, Register rhs, auto &insts) {
        insts.push_back(
            mc::MCInstBuilder(riscv::SLT).addReg(dst).addReg(lhs).addReg(rhs));
-       insts.push_back(mc::MCInstBuilder(riscv::SNEZ).addReg(dst).addReg(dst));
      }},
     {typeid(ir::LessEqualOp),
      [](Register dst, Register lhs, Register rhs, auto &insts) {
@@ -74,7 +73,6 @@ static const std::unordered_map<std::type_index, OpHandler> opHandlers = {
      [](Register dst, Register lhs, Register rhs, auto &insts) {
        insts.push_back(
            mc::MCInstBuilder(riscv::SGT).addReg(dst).addReg(lhs).addReg(rhs));
-       insts.push_back(mc::MCInstBuilder(riscv::SNEZ).addReg(dst).addReg(dst));
      }},
     {typeid(ir::GreaterEqualOp),
      [](Register dst, Register lhs, Register rhs, auto &insts) {
