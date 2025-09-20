@@ -166,11 +166,5 @@ private:
   std::string_view getASTNameImpl() const override { return "LOrExpAST"; }
 };
 
-template class BinaryExpAST<AddExpAST>;
-template class BinaryExpAST<MulExpAST>;
-template class BinaryExpAST<RelExpAST>;
-template class BinaryExpAST<EqExpAST>;
-template class BinaryExpAST<LAndExpAST>;
-template class BinaryExpAST<LOrExpAST>;
 } // namespace ast
 #endif // __AST_AST_H__
