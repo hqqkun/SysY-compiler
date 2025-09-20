@@ -95,7 +95,6 @@ void IRPrinter::printType(ir::Type *type) {
     os << ")";
     if (!funcType->hasReturnType()) {
       return;
-      ;
     }
     os << ": ";
     printType(funcType->getReturnType());

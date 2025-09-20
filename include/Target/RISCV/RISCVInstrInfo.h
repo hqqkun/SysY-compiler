@@ -13,13 +13,18 @@ namespace riscv {
 
 enum OpType {
   ADD,
+  AND,
   DIV,
   LI, // Load Immediate
   MUL,
   MV,
+  OR,
   REM,
   RET, // Return
   SEQZ,
+  SGT,
+  SLT,
+  SNEZ,
   SUB,
   XOR,
   // TODO: Add more RISC-V instruction op types as needed.
