@@ -51,7 +51,48 @@ static const std::unordered_map<std::type_index, OpHandler> opHandlers = {
        insts.push_back(
            mc::MCInstBuilder(riscv::XOR).addReg(dst).addReg(lhs).addReg(rhs));
        insts.push_back(mc::MCInstBuilder(riscv::SEQZ).addReg(dst).addReg(dst));
-     }}};
+     }},
+    {typeid(ir::NeqOp),
+     [](Register dst, Register lhs, Register rhs, auto &insts) {
+       insts.push_back(
+           mc::MCInstBuilder(riscv::XOR).addReg(dst).addReg(lhs).addReg(rhs));
+       insts.push_back(mc::MCInstBuilder(riscv::SNEZ).addReg(dst).addReg(dst));
+     }},
+    {typeid(ir::LessOp),
+     [](Register dst, Register lhs, Register rhs, auto &insts) {
+       insts.push_back(
+           mc::MCInstBuilder(riscv::SLT).addReg(dst).addReg(lhs).addReg(rhs));
+       insts.push_back(mc::MCInstBuilder(riscv::SNEZ).addReg(dst).addReg(dst));
+     }},
+    {typeid(ir::LessEqualOp),
+     [](Register dst, Register lhs, Register rhs, auto &insts) {
+       insts.push_back(
+           mc::MCInstBuilder(riscv::SGT).addReg(dst).addReg(lhs).addReg(rhs));
+       insts.push_back(mc::MCInstBuilder(riscv::SEQZ).addReg(dst).addReg(dst));
+     }},
+    {typeid(ir::GreaterOp),
+     [](Register dst, Register lhs, Register rhs, auto &insts) {
+       insts.push_back(
+           mc::MCInstBuilder(riscv::SGT).addReg(dst).addReg(lhs).addReg(rhs));
+       insts.push_back(mc::MCInstBuilder(riscv::SNEZ).addReg(dst).addReg(dst));
+     }},
+    {typeid(ir::GreaterEqualOp),
+     [](Register dst, Register lhs, Register rhs, auto &insts) {
+       insts.push_back(
+           mc::MCInstBuilder(riscv::SLT).addReg(dst).addReg(lhs).addReg(rhs));
+       insts.push_back(mc::MCInstBuilder(riscv::SEQZ).addReg(dst).addReg(dst));
+     }},
+    {typeid(ir::BitAndOp),
+     [](Register dst, Register lhs, Register rhs, auto &insts) {
+       insts.push_back(
+           mc::MCInstBuilder(riscv::AND).addReg(dst).addReg(lhs).addReg(rhs));
+     }},
+    {typeid(ir::BitOrOp),
+     [](Register dst, Register lhs, Register rhs, auto &insts) {
+       insts.push_back(
+           mc::MCInstBuilder(riscv::OR).addReg(dst).addReg(lhs).addReg(rhs));
+     }},
+};
 
 /// naive implementation of register allocation.
 Register allocateNewRegister() {
@@ -93,7 +134,7 @@ void RISCVInstrInfo::lowerBinaryOp(ir::BinaryOp *binOp,
   Register rhsReg = lowerOperand(rhs, outInsts);
   Register dstReg = Register::UNKNOWN;
 
-  // We can optimize this if lrsReg or rhsReg has just one user.
+  // We can optimize this if lhsReg or rhsReg has just one user.
   if (lhs->getUsers().size() == 1 && lhsReg != Register::ZERO) {
     dstReg = lhsReg;
   } else if (rhs->getUsers().size() == 1 && rhsReg != Register::ZERO) {
@@ -104,6 +145,8 @@ void RISCVInstrInfo::lowerBinaryOp(ir::BinaryOp *binOp,
 
   auto it = opHandlers.find(typeid(*binOp));
   assert(it != opHandlers.end() && "Unsupported BinaryOp type");
+
+  // Emit MC instructions.
   it->second(dstReg, lhsReg, rhsReg, outInsts);
   value2RegMap[binOp->getResult()] = dstReg;
 }
@@ -156,8 +199,10 @@ std::string_view getRegisterName(Register reg) {
 
 std::string_view getOpTypeName(OpType op) {
   static const std::unordered_map<OpType, std::string_view> opNames = {
-      {ADD, "add"}, {DIV, "div"}, {LI, "li"},     {MUL, "mul"}, {MV, "mv"},
-      {REM, "rem"}, {RET, "ret"}, {SEQZ, "seqz"}, {SUB, "sub"}, {XOR, "xor"}};
+      {ADD, "add"}, {AND, "and"}, {DIV, "div"},   {LI, "li"},   {MUL, "mul"},
+      {MV, "mv"},   {OR, "or"},   {REM, "rem"},   {RET, "ret"}, {SEQZ, "seqz"},
+      {SGT, "sgt"}, {SLT, "slt"}, {SNEZ, "snez"}, {SUB, "sub"}, {XOR, "xor"}};
+
   if (auto it = opNames.find(op); it != opNames.end()) {
     return it->second;
   }
