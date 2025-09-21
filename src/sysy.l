@@ -31,6 +31,7 @@ Hexadecimal 0[xX][0-9a-fA-F]+
 {BlockComment} { /* Ignore block comments */ }
 "int"           {return INT;}
 "return"        {return RETURN;}
+"const"         {return CONST;}
 {Identifier}    { yylval.str_val  = new std::string(yytext); return IDENT; }
 {Decimal}       { yylval.int_val = strtol(yytext, nullptr, 0); return INT_CONST; }
 {Octal}         { yylval.int_val = strtol(yytext, nullptr, 0); return INT_CONST; }
@@ -49,6 +50,7 @@ Hexadecimal 0[xX][0-9a-fA-F]+
 "!="            { return T_NEQ; }
 "&&"            { return T_AND; }
 "||"            { return T_OR; }
+"="             {return T_ASSIGN; }
 .               {return yytext[0]; }
 
 %%

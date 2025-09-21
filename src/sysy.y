@@ -26,16 +26,26 @@ void yyerror(std::unique_ptr<ast::BaseAST>& ast, const char* s);
   int int_val;
   std::string* str_val;
   ast::BaseAST* ast_val;
+  std::vector<ast::ASTPtr>* astVec;
+  std::vector<ast::BlockItemPtr>* blockItemVec;
+  ast::BlockItemAST* blockItem;
   ast::Op op;
+  ast::Type type;
 }
 
 
-%token INT RETURN T_MUL T_DIV T_MOD T_ADD T_SUB T_BANG T_LE T_GE T_LT T_GT T_EQ T_NEQ T_AND T_OR
+%token INT RETURN CONST T_MUL T_DIV T_MOD T_ADD T_SUB T_BANG T_LE T_GE T_LT T_GT T_EQ T_NEQ T_AND T_OR T_ASSIGN
 %token <int_val> INT_CONST
 %token <str_val> IDENT
 
 %type <op> UnaryOp MulOp AddOp RelOp EqOp LAndOp LOrOp
-%type <ast_val> FuncDef FuncType Block Stmt EXP PrimaryExp UnaryExp MulExp AddExp RelExp EqExp LAndExp LOrExp
+
+%type <ast_val> FuncDef FuncType Block Stmt Decl ConstDecl ConstDef ConstInitVal
+%type <ast_val> EXP PrimaryExp UnaryExp MulExp AddExp RelExp EqExp LAndExp LOrExp ConstExp LVal
+%type <astVec> ConstDefList
+%type <blockItemVec> BlockItemList
+%type <blockItem> BlockItem
+%type <type> BType
 %type <int_val> Number
 
 %%
@@ -68,11 +78,82 @@ FuncType
     }
     ;
 
+/// Decleration
+Decl
+    : ConstDecl {
+      auto decl = std::unique_ptr<ast::BaseAST>($1);
+      $$ = new ast::DeclAST(std::move(decl));
+    }
+    ;
+
+ConstDecl
+    : CONST BType ConstDefList ';' {
+      auto defList = std::unique_ptr<std::vector<ast::ASTPtr>>($3);
+      $$ = new ast::ConstDeclAST($2, std::move(defList));
+    }
+    ;
+
+ConstDefList
+    : ConstDef {
+      auto vec = new std::vector<std::unique_ptr<ast::BaseAST>>();
+      vec->emplace_back($1);
+      $$ = vec;
+    }
+    | ConstDefList ',' ConstDef {
+      auto vec = $1;
+      vec->emplace_back($3);
+      $$ = vec;
+    }
+    ;
+
+BType
+    : INT {
+      $$ = ast::Type::INT;
+    }
+    ;
+
+ConstDef
+    : IDENT T_ASSIGN ConstInitVal {
+      auto var = *std::unique_ptr<std::string>($1);
+      auto init = std::unique_ptr<ast::BaseAST>($3);
+      $$ = new ast::ConstDefAST(var, std::move(init));
+    }
+    ;
+
+ConstInitVal
+    : ConstExp {
+      auto exp = std::unique_ptr<ast::BaseAST>($1);
+      $$ = new ast::ConstInitValAST(std::move(exp));
+    }
+    ;
+
 Block
-    : '{' Stmt '}' {
-      auto ast = new ast::BlockAST();
-      ast->stmt = std::unique_ptr<ast::BaseAST>($2);
-      $$ = ast;
+    : '{' BlockItemList '}' {
+      auto list = std::unique_ptr<std::vector<ast::BlockItemPtr>>($2);
+      $$ = new ast::BlockAST(std::move(list));
+    }
+    ;
+
+BlockItemList
+    : /* empty */ {
+      auto vec = new std::vector<ast::BlockItemPtr>();
+      $$ = vec;
+    }
+    | BlockItemList BlockItem {
+      auto vec = $1;
+      vec->emplace_back($2);
+      $$ = vec;
+    }
+    ;
+
+BlockItem
+    : Decl {
+      auto item = std::unique_ptr<ast::BaseAST>($1);
+      $$ = new ast::BlockItemAST(std::move(item));
+    }
+    | Stmt {
+      auto item = std::unique_ptr<ast::BaseAST>($1);
+      $$ = new ast::BlockItemAST(std::move(item));
     }
     ;
 
@@ -81,6 +162,14 @@ Stmt
       auto ast = new ast::StmtAST();
       ast->exp = std::unique_ptr<ast::BaseAST>($2);
       $$ = ast;
+    }
+    ;
+
+/// Expression
+LVal
+    : IDENT {
+      auto var = *std::unique_ptr<std::string>($1);
+      $$ = new ast::LValAST(var);
     }
     ;
 
@@ -96,6 +185,10 @@ PrimaryExp
     : '(' EXP ')' {
       auto exp = std::unique_ptr<ast::BaseAST>($2);
       $$ = new ast::PrimaryExpAST(std::move(exp));
+    }
+    | LVal {
+      auto lval = std::unique_ptr<ast::BaseAST>($1);
+      $$ = new ast::PrimaryExpAST(std::move(lval));
     }
     | Number {
       $$ = new ast::PrimaryExpAST($1);
@@ -182,6 +275,13 @@ LOrExp
       auto left = std::unique_ptr<ast::BaseAST>($1);
       auto right = std::unique_ptr<ast::BaseAST>($3);
       $$ = new ast::LOrExpAST(std::move(left), $2, std::move(right));
+    }
+    ;
+
+ConstExp
+    : EXP {
+     auto exp = std::unique_ptr<ast::BaseAST>($1);
+      $$ = new ast::ConstExpAST(std::move(exp));
     }
     ;
 

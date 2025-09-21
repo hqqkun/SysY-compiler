@@ -4,12 +4,15 @@
 #include <memory>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include "AST/Ops.h"
 #include "AST/Type.h"
 
 namespace ast {
 using ASTPtr = std::unique_ptr<class BaseAST>;
+using BlockItemPtr = std::unique_ptr<class BlockItemAST>;
+
 class BaseAST {
 public:
   virtual ~BaseAST() = default;
@@ -36,10 +39,64 @@ public:
   void dump() const override;
 };
 
+/// Decleration
+class DeclAST : public BaseAST {
+public:
+  ASTPtr constDecl;
+  void dump() const override;
+
+  DeclAST(ASTPtr decl) : constDecl(std::move(decl)) {}
+};
+
+class ConstDeclAST : public BaseAST {
+public:
+  Type bType;
+  std::unique_ptr<std::vector<ASTPtr>> constDefs;
+  void dump() const override;
+
+  ConstDeclAST(Type type, std::unique_ptr<std::vector<ASTPtr>> defs)
+      : bType(type), constDefs(std::move(defs)) {}
+};
+
+class ConstDefAST : public BaseAST {
+public:
+  std::string var;
+  ASTPtr initVal;
+  void dump() const override;
+
+  ConstDefAST(const std::string &name, ASTPtr init)
+      : var(name), initVal(std::move(init)) {}
+};
+
+class ConstInitValAST : public BaseAST {
+public:
+  ASTPtr constExp;
+  void dump() const override;
+
+  ConstInitValAST(ASTPtr exp) : constExp(std::move(exp)) {}
+};
+
 class BlockAST : public BaseAST {
 public:
-  ASTPtr stmt;
+  std::unique_ptr<std::vector<BlockItemPtr>> blockItems;
   void dump() const override;
+
+  BlockAST(std::unique_ptr<std::vector<BlockItemPtr>> items)
+      : blockItems(std::move(items)) {}
+};
+
+class BlockItemAST : public BaseAST {
+public:
+  ASTPtr decl;
+  ASTPtr stmt;
+
+  BlockItemAST(ASTPtr item);
+  bool isDecl() const { return type == Type::DECL; }
+  bool isStmt() const { return type == Type::STMT; }
+  void dump() const override;
+
+private:
+  enum class Type { DECL, STMT } type;
 };
 
 class StmtAST : public BaseAST {
@@ -48,10 +105,19 @@ public:
   void dump() const override;
 };
 
+/// Expression
 class ExprAST : public BaseAST {
 public:
   ASTPtr exp;
   void dump() const override;
+};
+
+class LValAST : public BaseAST {
+public:
+  std::string ident;
+  void dump() const override;
+
+  LValAST(const std::string &var) : ident(var) {}
 };
 
 // PrimaryExp ::= "(" Exp ")" | Number
@@ -59,15 +125,27 @@ class PrimaryExpAST : public BaseAST {
 public:
   int number;
   ASTPtr exp;
+  ASTPtr lVal;
   void dump() const override;
 
   PrimaryExpAST(int num) : number(num), type(Type::NUMBER) {}
-  PrimaryExpAST(ASTPtr e) : exp(std::move(e)), type(Type::EXP) {}
+  PrimaryExpAST(ASTPtr var) {
+    if (dynamic_cast<ExprAST *>(var.get())) {
+      exp = std::move(var);
+      type = Type::EXP;
+    } else if (dynamic_cast<LValAST *>(var.get())) {
+      lVal = std::move(var);
+      type = Type::LVAL;
+    } else {
+      assert(false && "var is neither exp or lval.");
+    }
+  }
   bool isNumber() const { return type == Type::NUMBER; }
   bool isExp() const { return type == Type::EXP; }
+  bool isLVal() const { return type == Type::LVAL; }
 
 private:
-  enum class Type { NUMBER, EXP } type;
+  enum class Type { NUMBER, EXP, LVAL } type;
 };
 
 // UnaryExp ::= PrimaryExp | UnaryOp UnaryExp
@@ -89,6 +167,13 @@ public:
 
 private:
   enum class Type { PRIMARY, UNARY_OP } type;
+};
+class ConstExpAST : public BaseAST {
+public:
+  ASTPtr exp;
+  void dump() const override;
+
+  ConstExpAST(ASTPtr e) : exp(std::move(e)) {}
 };
 
 class BinaryExpAST : public BaseAST {

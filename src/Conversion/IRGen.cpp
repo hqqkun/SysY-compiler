@@ -22,6 +22,9 @@ ir::Value *IRGen::dispatchAndConvert(ir::IRBuilder &builder,
     return convertUnaryExpr(builder, unary);
   } else if (auto *binary = dynamic_cast<BinaryExpAST *>(ast)) {
     return convertBinaryExp(builder, binary);
+  } else if (auto *lval = dynamic_cast<LValAST *>(ast)) {
+    int32_t value = convertLval(lval);
+    return ir::Integer::get(builder.getContext(), value, 32);
   } else {
     assert(false && "Unknown AST type");
   }
@@ -38,6 +41,8 @@ ir::Value *IRGen::convertPrimaryExpr(ir::IRBuilder &builder,
   assert(primaryExpAST && "Primary expression AST cannot be null");
   if (primaryExpAST->isExp()) {
     return dispatchAndConvert(builder, primaryExpAST->exp.get());
+  } else if (primaryExpAST->isLVal()) {
+    return dispatchAndConvert(builder, primaryExpAST->lVal.get());
   } else if (primaryExpAST->isNumber()) {
     return ir::Integer::get(builder.getContext(), primaryExpAST->number, 32);
   } else {
@@ -127,6 +132,11 @@ ir::Value *IRGen::convertBinaryExp(ir::IRBuilder &builder,
   }
 }
 
+int32_t IRGen::convertLval(ast::LValAST *lvalAST) {
+  assert(lvalAST && "LValAST cannot be null");
+  return varTables.getConstant(lvalAST->ident);
+}
+
 ir::FunctionType *IRGen::convertFunctionType(FuncTypeAST *funcTypeAST) {
   if (!funcTypeAST || funcTypeAST->type != Type::INT)
     return nullptr;
@@ -143,6 +153,33 @@ void IRGen::convertStmt(ir::IRBuilder &builder, StmtAST *stmtAST) {
   builder.create<ir::ReturnOp>(returnVal);
 }
 
+void IRGen::convertDeclaration(ast::DeclAST *declAST) {
+  assert(declAST && "Declaration AST cannot be null");
+  convertConstDecl(dynamic_cast<ConstDeclAST *>(declAST->constDecl.get()));
+}
+
+void IRGen::convertConstDecl(ast::ConstDeclAST *constDeclAST) {
+  assert(constDeclAST && "ConstDeclAST cannot be null");
+  size_t size = constDeclAST->constDefs->size();
+  for (size_t i = 0; i < size; ++i) {
+    auto *constDef =
+        dynamic_cast<ConstDefAST *>((*constDeclAST->constDefs)[i].get());
+    convertConstDef(constDef);
+  }
+}
+
+void IRGen::convertConstDef(ast::ConstDefAST *constDefAST) {
+  assert(constDefAST && "ConstDefAST cannot be null");
+  auto *constInitVal =
+      dynamic_cast<ConstInitValAST *>(constDefAST->initVal.get());
+  auto *constExp =
+      constInitVal ? dynamic_cast<ConstExpAST *>(constInitVal->constExp.get())
+                   : nullptr;
+  auto *exp = constExp ? dynamic_cast<ExprAST *>(constExp->exp.get()) : nullptr;
+  int32_t value = interpreter.evalExpr(exp);
+  varTables.setConstant(constDefAST->var, value);
+}
+
 ir::BasicBlock *IRGen::convertBlock(BlockAST *blockAST) {
   if (!blockAST)
     return nullptr;
@@ -150,8 +187,16 @@ ir::BasicBlock *IRGen::convertBlock(BlockAST *blockAST) {
   ir::BasicBlock *block = ir::BasicBlock::create(context, "entry");
   ir::IRBuilder builder(context);
   builder.setInsertPoint(block);
-  if (auto *stmt = dynamic_cast<StmtAST *>(blockAST->stmt.get())) {
-    convertStmt(builder, stmt);
+  size_t size = blockAST->blockItems->size();
+  for (size_t i = 0; i < size; ++i) {
+    BlockItemAST *item = (*blockAST->blockItems)[i].get();
+    if (item->isStmt()) {
+      convertStmt(builder, dynamic_cast<StmtAST *>(item->stmt.get()));
+    } else if (item->isDecl()) {
+      convertDeclaration(dynamic_cast<DeclAST *>(item->decl.get()));
+    } else {
+      assert(false && "Unknown block item type");
+    }
   }
   return block;
 }
