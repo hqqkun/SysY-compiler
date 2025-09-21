@@ -35,23 +35,10 @@ private:
                                        ast::PrimaryExpAST *primaryExpAST);
   static ir::Value *convertUnaryExpr(ir::IRBuilder &builder,
                                      ast::UnaryExpAST *unaryExprAST);
-  static ir::Value *convertMulExpr(ir::IRBuilder &builder,
-                                   ast::MulExpAST *mulExpAST);
-  static ir::Value *convertAddExpr(ir::IRBuilder &builder,
-                                   ast::AddExpAST *addExpAST);
-  static ir::Value *convertRelExpr(ir::IRBuilder &builder,
-                                   ast::RelExpAST *relExpAST);
-  static ir::Value *convertEqExpr(ir::IRBuilder &builder,
-                                  ast::EqExpAST *eqExpAST);
-  static ir::Value *convertLAndExpr(ir::IRBuilder &builder,
-                                    ast::LAndExpAST *landExpAST);
-  static ir::Value *convertLOrExpr(ir::IRBuilder &builder,
-                                   ast::LOrExpAST *lorExpAST);
-
-  template <typename DerivedAST, typename NextAST,
-            ir::Value *(*NextConvertFunc)(ir::IRBuilder &, NextAST *)>
-  static ir::Value *convertBinaryExp(ir::IRBuilder &builder, DerivedAST *ast,
-                                     OpHandler op_handler);
+  static ir::Value *convertBinaryExp(ir::IRBuilder &builder,
+                                     ast::BinaryExpAST *binaryExpAST);
+  static ir::Value *dispatchAndConvert(ir::IRBuilder &builder,
+                                       ast::BaseAST *ast);
 };
 
 } // namespace conversion
