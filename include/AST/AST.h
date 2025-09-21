@@ -91,7 +91,7 @@ private:
   enum class Type { PRIMARY, UNARY_OP } type;
 };
 
-template <typename Derived> class BinaryExpAST : public BaseAST {
+class BinaryExpAST : public BaseAST {
 public:
   ASTPtr singleExp;
   std::pair<ASTPtr, ASTPtr> compositeExp;
@@ -113,54 +113,54 @@ protected:
 };
 
 // AddExp ::= MulExp | AddExp ("+" | "-") MulExp
-class AddExpAST : public BinaryExpAST<AddExpAST> {
+class AddExpAST : public BinaryExpAST {
 public:
-  using BinaryExpAST<AddExpAST>::BinaryExpAST;
+  using BinaryExpAST::BinaryExpAST;
 
 private:
   std::string_view getASTNameImpl() const override { return "AddExpAST"; }
 };
 
 // MulExp ::= UnaryExp | MulExp ("*" | "/" | "%") UnaryExp
-class MulExpAST : public BinaryExpAST<MulExpAST> {
+class MulExpAST : public BinaryExpAST {
 public:
-  using BinaryExpAST<MulExpAST>::BinaryExpAST;
+  using BinaryExpAST::BinaryExpAST;
 
 private:
   std::string_view getASTNameImpl() const override { return "MulExpAST"; }
 };
 
 // RelExp ::= AddExp | RelExp ("<" | ">" | "<=" | ">=") AddExp
-class RelExpAST : public BinaryExpAST<RelExpAST> {
+class RelExpAST : public BinaryExpAST {
 public:
-  using BinaryExpAST<RelExpAST>::BinaryExpAST;
+  using BinaryExpAST::BinaryExpAST;
 
 private:
   std::string_view getASTNameImpl() const override { return "RelExpAST"; }
 };
 
 // EqExp ::= RelExp | EqExp ("==" | "!=") RelExp
-class EqExpAST : public BinaryExpAST<EqExpAST> {
+class EqExpAST : public BinaryExpAST {
 public:
-  using BinaryExpAST<EqExpAST>::BinaryExpAST;
+  using BinaryExpAST::BinaryExpAST;
 
 private:
   std::string_view getASTNameImpl() const override { return "EqExpAST"; }
 };
 
 // LAndExp ::= EqExp | LAndExp "&&" EqExp
-class LAndExpAST : public BinaryExpAST<LAndExpAST> {
+class LAndExpAST : public BinaryExpAST {
 public:
-  using BinaryExpAST<LAndExpAST>::BinaryExpAST;
+  using BinaryExpAST::BinaryExpAST;
 
 private:
   std::string_view getASTNameImpl() const override { return "LAndExpAST"; }
 };
 
 // LOrExp ::= LAndExp | LOrExp "||" LAndExp
-class LOrExpAST : public BinaryExpAST<LOrExpAST> {
+class LOrExpAST : public BinaryExpAST {
 public:
-  using BinaryExpAST<LOrExpAST>::BinaryExpAST;
+  using BinaryExpAST::BinaryExpAST;
 
 private:
   std::string_view getASTNameImpl() const override { return "LOrExpAST"; }
