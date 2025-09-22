@@ -21,4 +21,8 @@ FunctionType *FunctionType::get(IRContext &context, Type *returnType,
   return context.create<FunctionType>(returnType, paramTypes);
 }
 
+PointerType *PointerType::get(IRContext &context, Type *pointeeType) {
+  return context.create<PointerType>(pointeeType);
+}
+
 } // namespace ir

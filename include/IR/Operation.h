@@ -2,6 +2,7 @@
 #define __IR_OPERATION_H__
 
 #include <ostream>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -126,6 +127,35 @@ public:
   explicit ReturnOp(IRContext &context, Value *retVal = nullptr);
   Value *getReturnValue() const { return getOperand(0); }
   std::string_view getOpName() const override { return "ret"; }
+};
+
+class AllocOp : public Operation {
+public:
+  explicit AllocOp(IRContext &context, const std::string &var, Type *allocType,
+                   size_t size = 1);
+  std::string_view getOpName() const override { return "alloc"; }
+  const std::string &getVarName() const { return varName; }
+  Type *getAllocType() const { return elemType; }
+
+private:
+  size_t allocSize;
+  std::string varName;
+  Type *elemType;
+};
+
+class LoadOp : public Operation {
+public:
+  explicit LoadOp(IRContext &context, Value *ptr);
+  Value *getPointer() const { return getOperand(0); }
+  std::string_view getOpName() const override { return "load"; }
+};
+
+class StoreOp : public Operation {
+public:
+  explicit StoreOp(IRContext &context, Value *val, Value *ptr);
+  Value *getValue() const { return getOperand(0); }
+  Value *getPointer() const { return getOperand(1); }
+  std::string_view getOpName() const override { return "store"; }
 };
 
 } // namespace ir

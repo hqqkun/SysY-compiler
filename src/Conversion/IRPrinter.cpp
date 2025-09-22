@@ -36,6 +36,15 @@ void IRPrinter::printBasicBlock(ir::BasicBlock *block, OpResultMap &resultMap) {
 void IRPrinter::printOperation(ir::Operation *op, OpResultMap &resultMap) {
   assert(op && "Operation cannot be null");
 
+  if (auto *allocOp = dynamic_cast<ir::AllocOp *>(op)) {
+    allocNames[allocOp->getResult()] = allocOp->getVarName();
+    os << "@" << allocOp->getVarName() << " = ";
+    os << allocOp->getOpName() << " ";
+    printType(allocOp->getAllocType());
+    os << std::endl;
+    return;
+  }
+
   // Print format: %id = op operands | op operands
   if (op->hasResult()) {
     // If the operation produces a result, assign an ID and print it.
@@ -65,6 +74,12 @@ void IRPrinter::printOperand(ir::Value *operand, OpResultMap &resultMap) {
     os << intVal->getValue();
   } else if (operand->isOpResult()) {
     ir::OpResult *opRes = static_cast<ir::OpResult *>(operand);
+
+    // Check if it's from an AllocOp to print variable name.
+    if (allocNames.find(opRes) != allocNames.end()) {
+      os << "@" << allocNames[opRes];
+      return;
+    }
     uint64_t id = resultMap.getId(opRes);
     os << "%" << id;
   } else if (operand->isFuncArg()) {

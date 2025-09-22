@@ -6,6 +6,18 @@
 
 namespace ast {
 
+DeclAST::DeclAST(ASTPtr decl) {
+  if (dynamic_cast<ConstDeclAST *>(decl.get())) {
+    constDecl = std::move(decl);
+    type = Type::CONST;
+  } else if (dynamic_cast<VarDeclAST *>(decl.get())) {
+    varDecl = std::move(decl);
+    type = Type::VAR;
+  } else {
+    assert(false && "decl is neither constDecl or varDecl.");
+  }
+}
+
 BlockItemAST::BlockItemAST(ASTPtr item) {
   if (dynamic_cast<DeclAST *>(item.get())) {
     decl = std::move(item);
@@ -51,8 +63,12 @@ void FuncTypeAST::dump() const {
 /// Decleration
 void DeclAST::dump() const {
   std::cout << "DeclAST { ";
-  if (constDecl) {
+  if (isConstDecl()) {
     constDecl->dump();
+  } else if (isVarDecl()) {
+    varDecl->dump();
+  } else {
+    assert(false && "Invalid DeclAST");
   }
   std::cout << " }";
 }
@@ -90,6 +106,39 @@ void ConstInitValAST::dump() const {
   std::cout << " }";
 }
 
+void VarDeclAST::dump() const {
+  std::cout << "VarDeclAST { ";
+  switch (bType) {
+    case Type::INT:
+      std::cout << "INT";
+      break;
+  }
+  std::cout << ", [ ";
+  for (size_t i = 0; i < varDefs->size(); ++i) {
+    if (i != 0) {
+      std::cout << ", ";
+    }
+    (*varDefs)[i]->dump();
+  }
+  std::cout << " ] }";
+}
+
+void VarDefAST::dump() const {
+  std::cout << "VarDefAST { " << var << ", ";
+  if (initVal) {
+    initVal->dump();
+  }
+  std::cout << " }";
+}
+
+void InitValAST::dump() const {
+  std::cout << "InitValAST { ";
+  if (exp) {
+    exp->dump();
+  }
+  std::cout << " }";
+}
+
 void BlockAST::dump() const {
   std::cout << "BlockAST { ";
   for (const auto &item : *blockItems) {
@@ -111,14 +160,28 @@ void BlockItemAST::dump() const {
   std::cout << " }";
 }
 
-void StmtAST::dump() const {
-  std::cout << "StmtAST { ";
+/// Statement dumping
+void ReturnStmtAST::dump() const {
+  std::cout << "ReturnStmtAST { ";
   if (exp) {
     exp->dump();
   }
   std::cout << " }";
 }
 
+void AssignStmtAST::dump() const {
+  std::cout << "AssignStmtAST { ";
+  if (lVal) {
+    lVal->dump();
+  }
+  std::cout << ", ";
+  if (exp) {
+    exp->dump();
+  }
+  std::cout << " }";
+}
+
+/// Expression dumping
 void ExprAST::dump() const {
   std::cout << "ExprAST { ";
   if (exp) {

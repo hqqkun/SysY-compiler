@@ -1,4 +1,5 @@
 #include <cassert>
+#include <variant>
 
 #include "AST/AST.h"
 #include "AST/Ops.h"
@@ -6,10 +7,21 @@
 #include "IR/Function.h"
 #include "IR/IRBuilder.h"
 #include "IR/Operation.h"
+#include "Utils/Utils.h"
 
 using namespace ast;
 
 namespace conversion {
+
+static ir::Type *ASTType2IRType(ir::IRContext &context, ast::Type bType) {
+  switch (bType) {
+    case ast::Type::INT:
+      return ir::IntegerType::get(context, 32);
+    default:
+      assert(false && "Unsupported AST base type");
+      return nullptr;
+  }
+}
 
 ir::Value *IRGen::dispatchAndConvert(ir::IRBuilder &builder,
                                      ast::BaseAST *ast) {
@@ -23,8 +35,9 @@ ir::Value *IRGen::dispatchAndConvert(ir::IRBuilder &builder,
   } else if (auto *binary = dynamic_cast<BinaryExpAST *>(ast)) {
     return convertBinaryExp(builder, binary);
   } else if (auto *lval = dynamic_cast<LValAST *>(ast)) {
-    int32_t value = convertLval(lval);
-    return ir::Integer::get(builder.getContext(), value, 32);
+    return convertLval(builder, lval);
+  } else if (auto *init = dynamic_cast<InitValAST *>(ast)) {
+    return convertInitValExp(builder, init);
   } else {
     assert(false && "Unknown AST type");
   }
@@ -132,9 +145,24 @@ ir::Value *IRGen::convertBinaryExp(ir::IRBuilder &builder,
   }
 }
 
-int32_t IRGen::convertLval(ast::LValAST *lvalAST) {
+ir::Value *IRGen::convertLval(ir::IRBuilder &builder, ast::LValAST *lvalAST) {
   assert(lvalAST && "LValAST cannot be null");
-  return varTables.getConstant(lvalAST->ident);
+  SymbolTable::Val lval = varTables.get(lvalAST->ident);
+  if (std::holds_alternative<ir::Value *>(lval)) {
+    ir::Value *lvalPtr = std::get<ir::Value *>(lval);
+    return builder.create<ir::LoadOp>(lvalPtr)->getResult();
+  } else {
+    assert(std::holds_alternative<int32_t>(lval) &&
+           "LVal must be a constant if not a variable");
+    int32_t value = std::get<int32_t>(lval);
+    return ir::Integer::get(builder.getContext(), value, 32);
+  }
+}
+
+ir::Value *IRGen::convertInitValExp(ir::IRBuilder &builder,
+                                    ast::InitValAST *initValAST) {
+  assert(initValAST && "InitValAST cannot be null");
+  return dispatchAndConvert(builder, initValAST->exp.get());
 }
 
 ir::FunctionType *IRGen::convertFunctionType(FuncTypeAST *funcTypeAST) {
@@ -145,17 +173,52 @@ ir::FunctionType *IRGen::convertFunctionType(FuncTypeAST *funcTypeAST) {
   return ir::FunctionType::get(context, intType, {});
 }
 
+/// Convert statements.
 void IRGen::convertStmt(ir::IRBuilder &builder, StmtAST *stmtAST) {
-  // Assume is a return stmt.
   assert(stmtAST && "Statement AST cannot be null");
-  ir::Value *returnVal = dispatchAndConvert(builder, stmtAST->exp.get());
+  if (auto *returnStmtAST = dynamic_cast<ReturnStmtAST *>(stmtAST)) {
+    convertReturnStmt(builder, returnStmtAST);
+  } else if (auto *assignStmtAST = dynamic_cast<AssignStmtAST *>(stmtAST)) {
+    convertAssignStmt(builder, assignStmtAST);
+  } else {
+    assert(false && "Unknown statement type");
+  }
+}
+
+void IRGen::convertReturnStmt(ir::IRBuilder &builder,
+                              ReturnStmtAST *returnStmtAST) {
+  assert(returnStmtAST && "ReturnStmtAST cannot be null");
+  ir::Value *returnVal = dispatchAndConvert(builder, returnStmtAST->exp.get());
   assert(returnVal && "Return value cannot be null");
   builder.create<ir::ReturnOp>(returnVal);
 }
 
-void IRGen::convertDeclaration(ast::DeclAST *declAST) {
+void IRGen::convertAssignStmt(ir::IRBuilder &builder,
+                              AssignStmtAST *assignStmtAST) {
+  assert(assignStmtAST && "AssignStmtAST cannot be null");
+  auto *lvalAST = dynamic_cast<LValAST *>(assignStmtAST->lVal.get());
+  assert(lvalAST && "LValAST cannot be null in assignment");
+
+  SymbolTable::Val lval = varTables.get(lvalAST->ident);
+  assert(std::holds_alternative<ir::Value *>(lval) &&
+         "LVal must be a variable in assignment");
+
+  ir::Value *lvalPtr = std::get<ir::Value *>(lval);
+  ir::Value *rhsValue = dispatchAndConvert(builder, assignStmtAST->exp.get());
+  assert(rhsValue && "Right-hand side value cannot be null in assignment");
+  builder.create<ir::StoreOp>(rhsValue, lvalPtr);
+}
+
+/// Convert declarations and definitions.
+void IRGen::convertDeclaration(ir::IRBuilder &builder, ast::DeclAST *declAST) {
   assert(declAST && "Declaration AST cannot be null");
-  convertConstDecl(dynamic_cast<ConstDeclAST *>(declAST->constDecl.get()));
+  if (declAST->isVarDecl()) {
+    convertVarDecl(builder, dynamic_cast<VarDeclAST *>(declAST->varDecl.get()));
+  } else if (declAST->isConstDecl()) {
+    convertConstDecl(dynamic_cast<ConstDeclAST *>(declAST->constDecl.get()));
+  } else {
+    assert(false && "Unknown declaration type");
+  }
 }
 
 void IRGen::convertConstDecl(ast::ConstDeclAST *constDeclAST) {
@@ -180,6 +243,34 @@ void IRGen::convertConstDef(ast::ConstDefAST *constDefAST) {
   varTables.setConstant(constDefAST->var, value);
 }
 
+void IRGen::convertVarDecl(ir::IRBuilder &builder,
+                           ast::VarDeclAST *varDeclAST) {
+  assert(varDeclAST && "VarDeclAST cannot be null");
+  size_t size = varDeclAST->varDefs->size();
+  for (size_t i = 0; i < size; ++i) {
+    auto *varDef = dynamic_cast<VarDefAST *>((*varDeclAST->varDefs)[i].get());
+    convertVarDef(builder, varDef, varDeclAST->bType);
+  }
+}
+
+void IRGen::convertVarDef(ir::IRBuilder &builder, ast::VarDefAST *varDefAST,
+                          ast::Type bType) {
+  assert(varDefAST && "VarDefAST cannot be null");
+
+  // 1. Create allocation.
+  ir::Type *allocType = ASTType2IRType(context, bType);
+  ir::Value *alloc =
+      builder.create<ir::AllocOp>(varDefAST->var, allocType, 1)->getResult();
+  varTables.setValue(varDefAST->var, alloc);
+
+  // 2. If there is an initializer, evaluate it and store the value.
+  if (varDefAST->initVal) {
+    ir::Value *initValue =
+        dispatchAndConvert(builder, varDefAST->initVal.get());
+    builder.create<ir::StoreOp>(initValue, alloc);
+  }
+}
+
 ir::BasicBlock *IRGen::convertBlock(BlockAST *blockAST) {
   if (!blockAST)
     return nullptr;
@@ -193,7 +284,7 @@ ir::BasicBlock *IRGen::convertBlock(BlockAST *blockAST) {
     if (item->isStmt()) {
       convertStmt(builder, dynamic_cast<StmtAST *>(item->stmt.get()));
     } else if (item->isDecl()) {
-      convertDeclaration(dynamic_cast<DeclAST *>(item->decl.get()));
+      convertDeclaration(builder, dynamic_cast<DeclAST *>(item->decl.get()));
     } else {
       assert(false && "Unknown block item type");
     }
