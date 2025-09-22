@@ -328,7 +328,7 @@ LOrExp
 
 ConstExp
     : EXP {
-     auto exp = std::unique_ptr<ast::BaseAST>($1);
+      auto exp = std::unique_ptr<ast::BaseAST>($1);
       $$ = new ast::ConstExpAST(std::move(exp));
     }
     ;

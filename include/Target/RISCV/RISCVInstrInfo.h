@@ -1,11 +1,13 @@
 #ifndef __TARGET_RISCV_RISCVINSTRINFO_H__
 #define __TARGET_RISCV_RISCVINSTRINFO_H__
 
+#include <cassert>
 #include <string_view>
 #include <unordered_map>
 #include <vector>
 
 #include "IR/Operation.h"
+#include "IR/Value.h"
 #include "MC/MCInst.h"
 
 namespace target {
@@ -13,9 +15,11 @@ namespace riscv {
 
 enum OpType {
   ADD,
+  ADDI,
   AND,
   DIV,
   LI, // Load Immediate
+  LW, // Load Word
   MUL,
   MV,
   OR,
@@ -26,6 +30,7 @@ enum OpType {
   SLT,
   SNEZ,
   SUB,
+  SW, // Store Word
   XOR,
   // TODO: Add more RISC-V instruction op types as needed.
 };
@@ -69,13 +74,49 @@ enum Register {
 
 class RISCVInstrInfo {
 public:
-  void lowerReturn(ir::ReturnOp *retOp, std::vector<mc::MCInst> &outInsts);
+  void lowerReturn(ir::ReturnOp *retOp, std::vector<mc::MCInst> &outInsts,
+                   const uint32_t stackSize = 0);
   void lowerBinaryOp(ir::BinaryOp *binOp, std::vector<mc::MCInst> &outInsts);
-  void resetRegMap() { value2RegMap.clear(); }
+  void lowerLoadOp(ir::LoadOp *loadOp, std::vector<mc::MCInst> &outInsts);
+  void lowerStoreOp(ir::StoreOp *storeOp, std::vector<mc::MCInst> &outInsts);
+  void emitPrologue(std::vector<mc::MCInst> &outInsts,
+                    const uint32_t stackSize = 0);
+
+  void resetMap() {
+    value2RegMap.clear();
+    value2StackSlotMap.clear();
+    offset = 0;
+  }
+
+  /// LV4: Assign a stack slot to the given value if it doesn't have one.
+  void addStackSlot(ir::Value *val) {
+    if (value2StackSlotMap.find(val) == value2StackSlotMap.end()) {
+      value2StackSlotMap[val] = offset;
+      offset += 4; // Assuming 4 bytes per stack slot for simplicity.
+    }
+  }
+
+  uint32_t getStackSlot(ir::Value *val) {
+    auto it = value2StackSlotMap.find(val);
+    if (it != value2StackSlotMap.end()) {
+      return it->second;
+    }
+    assert(false && "Value does not have an assigned stack slot");
+  }
+
+  uint32_t getAlignedStackSize(const uint32_t align = 16) const {
+    // Align the stack size to 16 bytes for RISC-V calling convention.
+    return ((offset + align - 1) / align) * align;
+  }
 
 private:
   std::unordered_map<ir::Value *, Register> value2RegMap;
-  Register lowerOperand(ir::Value *val, std::vector<mc::MCInst> &outInsts);
+  Register lowerOperand(ir::Value *val, Register temp,
+                        std::vector<mc::MCInst> &outInsts);
+
+  // LV4: map each OpResult to a stack slot.
+  std::unordered_map<ir::Value *, uint32_t> value2StackSlotMap;
+  uint32_t offset = 0; // Current stack offset in bytes.
 };
 
 std::string_view getRegisterName(Register reg);

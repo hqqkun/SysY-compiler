@@ -92,18 +92,9 @@ static const std::unordered_map<std::type_index, OpHandler> opHandlers = {
      }},
 };
 
-/// naive implementation of register allocation.
-Register allocateNewRegister() {
-  static const std::vector<Register> availableRegs = {
-      A0, A1, A2, A3, A4, A5, A6, A7, T0, T1, T2, T3, T4, T5, T6};
-  static size_t nextRegIdx = 0;
-  assert(nextRegIdx < availableRegs.size() &&
-         "Ran out of registers for allocation");
-  return availableRegs[nextRegIdx++];
-}
-
 void RISCVInstrInfo::lowerReturn(ReturnOp *retOp,
-                                 std::vector<mc::MCInst> &outInsts) {
+                                 std::vector<mc::MCInst> &outInsts,
+                                 const uint32_t stackSize) {
   assert(retOp && "ReturnOp is null");
   Value *retVal = retOp->getReturnValue();
   if (!retVal) {
@@ -112,9 +103,20 @@ void RISCVInstrInfo::lowerReturn(ReturnOp *retOp,
         mc::MCInstBuilder(riscv::LI).addReg(riscv::A0).addImm(0));
   } else {
     // Return with value.
-    Register retReg = lowerOperand(retVal, outInsts);
-    outInsts.push_back(
-        mc::MCInstBuilder(riscv::MV).addReg(riscv::A0).addReg(retReg));
+    Register retReg = lowerOperand(retVal, Register::A0, outInsts);
+    // Small optimization: if the retReg is not A0, move it to A0.
+    if (retReg != riscv::A0) {
+      outInsts.push_back(
+          mc::MCInstBuilder(riscv::MV).addReg(riscv::A0).addReg(retReg));
+    }
+  }
+
+  if (stackSize != 0) {
+    // Restore stack pointer: addi sp, sp, stackSize
+    outInsts.push_back(mc::MCInstBuilder(riscv::ADDI)
+                           .addReg(riscv::SP)
+                           .addReg(riscv::SP)
+                           .addImm(static_cast<int32_t>(stackSize)));
   }
   outInsts.push_back(mc::MCInstBuilder(riscv::RET));
 }
@@ -125,58 +127,84 @@ void RISCVInstrInfo::lowerBinaryOp(ir::BinaryOp *binOp,
   Value *lhs = binOp->getLHS();
   Value *rhs = binOp->getRHS();
   assert(lhs && rhs && "BinaryOp operands cannot be null");
-  assert(value2RegMap.find(binOp->getResult()) == value2RegMap.end() &&
-         "Result is already allocated a register");
 
-  Register lhsReg = lowerOperand(lhs, outInsts);
-  Register rhsReg = lowerOperand(rhs, outInsts);
-  Register dstReg = Register::UNKNOWN;
-
-  // We can optimize this if lhsReg or rhsReg has just one user.
-  if (lhs->getUsers().size() == 1 && lhsReg != Register::ZERO) {
-    dstReg = lhsReg;
-  } else if (rhs->getUsers().size() == 1 && rhsReg != Register::ZERO) {
-    dstReg = rhsReg;
+  Register lhsReg = lowerOperand(lhs, Register::T0, outInsts);
+  Register rhsReg = lowerOperand(rhs, Register::T1, outInsts);
+  Register opDstReg = riscv::UNKNOWN;
+  if (lhsReg != riscv::ZERO) {
+    opDstReg = lhsReg;
+  } else if (rhsReg != riscv::ZERO) {
+    opDstReg = rhsReg;
   } else {
-    dstReg = allocateNewRegister();
+    opDstReg = riscv::T0; // Both operands are ZERO, use T0 as destination.
   }
 
   auto it = opHandlers.find(typeid(*binOp));
   assert(it != opHandlers.end() && "Unsupported BinaryOp type");
 
   // Emit MC instructions.
-  it->second(dstReg, lhsReg, rhsReg, outInsts);
-  value2RegMap[binOp->getResult()] = dstReg;
+  it->second(opDstReg, lhsReg, rhsReg, outInsts);
+  uint32_t resultSlot = getStackSlot(binOp->getResult());
+  outInsts.push_back(mc::MCInstBuilder(riscv::SW).addReg(opDstReg).addMem(
+      riscv::SP, resultSlot));
 }
 
-Register RISCVInstrInfo::lowerOperand(ir::Value *val,
+void RISCVInstrInfo::lowerLoadOp(ir::LoadOp *loadOp,
+                                 std::vector<mc::MCInst> &outInsts) {
+  assert(loadOp && "LoadOp is null");
+  Value *ptr = loadOp->getPointer();
+  Value *result = loadOp->getResult();
+  uint32_t offsetSlot = getStackSlot(ptr);
+  uint32_t resultSlot = getStackSlot(result);
+  outInsts.push_back(mc::MCInstBuilder(riscv::LW)
+                         .addReg(Register::T0)
+                         .addMem(riscv::SP, offsetSlot));
+  outInsts.push_back(mc::MCInstBuilder(riscv::SW)
+                         .addReg(Register::T0)
+                         .addMem(riscv::SP, resultSlot));
+}
+
+void RISCVInstrInfo::lowerStoreOp(ir::StoreOp *storeOp,
+                                  std::vector<mc::MCInst> &outInsts) {
+  assert(storeOp && "StoreOp is null");
+  Value *val = storeOp->getValue();
+  Value *ptr = storeOp->getPointer();
+  uint32_t ptrSlot = getStackSlot(ptr);
+  Register valReg = lowerOperand(val, Register::T0, outInsts);
+  outInsts.push_back(
+      mc::MCInstBuilder(riscv::SW).addReg(valReg).addMem(riscv::SP, ptrSlot));
+}
+
+Register RISCVInstrInfo::lowerOperand(ir::Value *val, Register temp,
                                       std::vector<mc::MCInst> &outInsts) {
   assert(val && "Value is null");
-  // If the value is already allocated a register, reuse it.
   if (!val->isInteger()) {
-    auto it = value2RegMap.find(val);
-    assert(it != value2RegMap.end() && "Value not found in register map");
-    return it->second;
+    uint32_t offset = getStackSlot(val);
+    outInsts.push_back(
+        mc::MCInstBuilder(riscv::LW).addReg(temp).addMem(riscv::SP, offset));
+    return temp;
   }
 
   int imm = static_cast<Integer *>(val)->getValue();
   // `0` is a special immediate value that can be directly mapped to the ZERO
   // register.
   if (imm == 0) {
-    value2RegMap.insert({val, riscv::ZERO});
     return riscv::ZERO;
   }
+  // LI temp, imm
+  outInsts.push_back(mc::MCInstBuilder(riscv::LI).addReg(temp).addImm(imm));
+  return temp;
+}
 
-  auto it = value2RegMap.find(val);
-  if (it != value2RegMap.end()) {
-    return it->second;
+void RISCVInstrInfo::emitPrologue(std::vector<mc::MCInst> &outInsts,
+                                  const uint32_t stackSize) {
+  if (stackSize > 0) {
+    // Adjust stack pointer: addi sp, sp, -stackSize
+    outInsts.push_back(mc::MCInstBuilder(riscv::ADDI)
+                           .addReg(riscv::SP)
+                           .addReg(riscv::SP)
+                           .addImm(-static_cast<int32_t>(stackSize)));
   }
-
-  // LI dst, imm
-  Register dst = allocateNewRegister();
-  value2RegMap.insert({val, dst});
-  outInsts.push_back(mc::MCInstBuilder(riscv::LI).addReg(dst).addImm(imm));
-  return dst;
 }
 
 std::string_view getRegisterName(Register reg) {
@@ -197,9 +225,10 @@ std::string_view getRegisterName(Register reg) {
 
 std::string_view getOpTypeName(OpType op) {
   static const std::unordered_map<OpType, std::string_view> opNames = {
-      {ADD, "add"}, {AND, "and"}, {DIV, "div"},   {LI, "li"},   {MUL, "mul"},
-      {MV, "mv"},   {OR, "or"},   {REM, "rem"},   {RET, "ret"}, {SEQZ, "seqz"},
-      {SGT, "sgt"}, {SLT, "slt"}, {SNEZ, "snez"}, {SUB, "sub"}, {XOR, "xor"}};
+      {ADD, "add"}, {ADDI, "addi"}, {AND, "and"}, {DIV, "div"}, {LI, "li"},
+      {LW, "lw"},   {MUL, "mul"},   {MV, "mv"},   {OR, "or"},   {REM, "rem"},
+      {RET, "ret"}, {SEQZ, "seqz"}, {SGT, "sgt"}, {SLT, "slt"}, {SNEZ, "snez"},
+      {SUB, "sub"}, {SW, "sw"},     {XOR, "xor"}};
 
   if (auto it = opNames.find(op); it != opNames.end()) {
     return it->second;
