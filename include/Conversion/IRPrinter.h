@@ -3,6 +3,7 @@
 
 #include <cassert>
 #include <ostream>
+#include <string>
 #include <unordered_map>
 
 #include "IR/BasicBlock.h"
@@ -20,6 +21,8 @@ public:
 private:
   std::ostream &os;
   using ResultIdMap = std::unordered_map<ir::OpResult *, uint64_t>;
+  std::unordered_map<ir::OpResult *, std::string> allocNames;
+
   struct OpResultMap {
     explicit OpResultMap() = default;
     ResultIdMap result2Id;

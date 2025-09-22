@@ -43,9 +43,15 @@ public:
 class DeclAST : public BaseAST {
 public:
   ASTPtr constDecl;
+  ASTPtr varDecl;
   void dump() const override;
 
-  DeclAST(ASTPtr decl) : constDecl(std::move(decl)) {}
+  DeclAST(ASTPtr decl);
+  bool isConstDecl() const { return type == Type::CONST; }
+  bool isVarDecl() const { return type == Type::VAR; }
+
+private:
+  enum class Type { CONST, VAR } type;
 };
 
 class ConstDeclAST : public BaseAST {
@@ -56,6 +62,16 @@ public:
 
   ConstDeclAST(Type type, std::unique_ptr<std::vector<ASTPtr>> defs)
       : bType(type), constDefs(std::move(defs)) {}
+};
+
+class VarDeclAST : public BaseAST {
+public:
+  Type bType;
+  std::unique_ptr<std::vector<ASTPtr>> varDefs;
+  void dump() const override;
+
+  VarDeclAST(Type type, std::unique_ptr<std::vector<ASTPtr>> defs)
+      : bType(type), varDefs(std::move(defs)) {}
 };
 
 class ConstDefAST : public BaseAST {
@@ -74,6 +90,25 @@ public:
   void dump() const override;
 
   ConstInitValAST(ASTPtr exp) : constExp(std::move(exp)) {}
+};
+
+class VarDefAST : public BaseAST {
+public:
+  std::string var;
+  ASTPtr initVal; // can be nullptr
+  void dump() const override;
+
+  VarDefAST(const std::string &name, ASTPtr init)
+      : var(name), initVal(std::move(init)) {}
+  VarDefAST(const std::string &name) : var(name), initVal(nullptr) {}
+};
+
+class InitValAST : public BaseAST {
+public:
+  ASTPtr exp;
+  void dump() const override;
+
+  InitValAST(ASTPtr e) : exp(std::move(e)) {}
 };
 
 class BlockAST : public BaseAST {
@@ -99,10 +134,25 @@ private:
   enum class Type { DECL, STMT } type;
 };
 
-class StmtAST : public BaseAST {
+/// Statement
+class StmtAST : public BaseAST {};
+
+class ReturnStmtAST : public StmtAST {
 public:
   ASTPtr exp;
   void dump() const override;
+
+  ReturnStmtAST(ASTPtr e) : exp(std::move(e)) {}
+};
+
+class AssignStmtAST : public StmtAST {
+public:
+  ASTPtr lVal;
+  ASTPtr exp;
+  void dump() const override;
+
+  AssignStmtAST(ASTPtr lval, ASTPtr e)
+      : lVal(std::move(lval)), exp(std::move(e)) {}
 };
 
 /// Expression

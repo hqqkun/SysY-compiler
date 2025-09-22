@@ -40,9 +40,10 @@ void yyerror(std::unique_ptr<ast::BaseAST>& ast, const char* s);
 
 %type <op> UnaryOp MulOp AddOp RelOp EqOp LAndOp LOrOp
 
-%type <ast_val> FuncDef FuncType Block Stmt Decl ConstDecl ConstDef ConstInitVal
+%type <ast_val> FuncDef FuncType Block Stmt Decl ConstDecl VarDecl ConstDef VarDef ConstInitVal InitVal
 %type <ast_val> EXP PrimaryExp UnaryExp MulExp AddExp RelExp EqExp LAndExp LOrExp ConstExp LVal
 %type <astVec> ConstDefList
+%type <astVec> VarDefList
 %type <blockItemVec> BlockItemList
 %type <blockItem> BlockItem
 %type <type> BType
@@ -78,9 +79,19 @@ FuncType
     }
     ;
 
+BType
+    : INT {
+      $$ = ast::Type::INT;
+    }
+    ;
+
 /// Decleration
 Decl
     : ConstDecl {
+      auto decl = std::unique_ptr<ast::BaseAST>($1);
+      $$ = new ast::DeclAST(std::move(decl));
+    }
+    | VarDecl {
       auto decl = std::unique_ptr<ast::BaseAST>($1);
       $$ = new ast::DeclAST(std::move(decl));
     }
@@ -106,9 +117,23 @@ ConstDefList
     }
     ;
 
-BType
-    : INT {
-      $$ = ast::Type::INT;
+VarDecl
+    : BType VarDefList ';' {
+      auto defList = std::unique_ptr<std::vector<ast::ASTPtr>>($2);
+      $$ = new ast::VarDeclAST($1, std::move(defList));
+    }
+    ;
+
+VarDefList
+    : VarDef {
+      auto vec = new std::vector<std::unique_ptr<ast::BaseAST>>();
+      vec->emplace_back($1);
+      $$ = vec;
+    }
+    | VarDefList ',' VarDef {
+      auto vec = $1;
+      vec->emplace_back($3);
+      $$ = vec;
     }
     ;
 
@@ -124,6 +149,25 @@ ConstInitVal
     : ConstExp {
       auto exp = std::unique_ptr<ast::BaseAST>($1);
       $$ = new ast::ConstInitValAST(std::move(exp));
+    }
+    ;
+
+VarDef
+    : IDENT {
+      auto var = *std::unique_ptr<std::string>($1);
+      $$ = new ast::VarDefAST(var);
+    }
+    | IDENT T_ASSIGN InitVal {
+      auto var = *std::unique_ptr<std::string>($1);
+      auto init = std::unique_ptr<ast::BaseAST>($3);
+      $$ = new ast::VarDefAST(var, std::move(init));
+    }
+    ;
+
+InitVal
+    : EXP {
+      auto exp = std::unique_ptr<ast::BaseAST>($1);
+      $$ = new ast::InitValAST(std::move(exp));
     }
     ;
 
@@ -159,9 +203,13 @@ BlockItem
 
 Stmt
     : RETURN EXP ';' {
-      auto ast = new ast::StmtAST();
-      ast->exp = std::unique_ptr<ast::BaseAST>($2);
-      $$ = ast;
+      auto exp = std::unique_ptr<ast::BaseAST>($2);
+      $$ = new ast::ReturnStmtAST(std::move(exp));
+    }
+    | LVal T_ASSIGN EXP ';' {
+      auto var = std::unique_ptr<ast::BaseAST>($1);
+      auto exp = std::unique_ptr<ast::BaseAST>($3);
+      $$ = new ast::AssignStmtAST(std::move(var), std::move(exp));
     }
     ;
 

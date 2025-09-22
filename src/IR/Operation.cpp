@@ -1,5 +1,6 @@
 #include <cassert>
 #include <ostream>
+#include <string>
 #include <vector>
 
 #include "IR/Operation.h"
@@ -106,6 +107,40 @@ ReturnOp::ReturnOp(IRContext &context, Value *retVal) {
     resultType = VoidType::get(context);
   }
   // ReturnOp does not produce a result
+  result = nullptr;
+}
+
+AllocOp::AllocOp(IRContext &context, const std::string &name, Type *allocType,
+                 size_t size)
+    : allocSize(size), varName(name), elemType(allocType) {
+  assert(allocType && "AllocOp type cannot be null");
+  resultType = PointerType::get(context, allocType);
+  result = context.create<OpResult>(this);
+}
+
+LoadOp::LoadOp(IRContext &context, Value *ptr) {
+  assert(ptr && "LoadOp pointer cannot be null");
+  operands.emplace_back(ptr);
+  ptr->addUser(this);
+  // The result type is the pointee type of the pointer.
+  if (auto *ptrType = dynamic_cast<PointerType *>(ptr->getType())) {
+    resultType = ptrType->getPointeeType();
+  } else {
+    assert(false && "LoadOp operand is not a pointer type");
+  }
+  result = context.create<OpResult>(this);
+}
+
+StoreOp::StoreOp(IRContext &context, Value *val, Value *ptr) {
+  assert(val && "StoreOp value cannot be null");
+  assert(ptr && "StoreOp pointer cannot be null");
+  assert(ptr->getType()->isPointer() &&
+         "StoreOp pointer must be a pointer type");
+  operands.emplace_back(val);
+  operands.emplace_back(ptr);
+  val->addUser(this);
+  ptr->addUser(this);
+  resultType = VoidType::get(context);
   result = nullptr;
 }
 

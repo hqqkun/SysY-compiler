@@ -1,6 +1,7 @@
 #ifndef __IR_TYPE_H__
 #define __IR_TYPE_H__
 
+#include <cstddef>
 #include <optional>
 #include <ostream>
 #include <vector>
@@ -21,9 +22,10 @@ public:
   bool isVoid() const { return kind == TypeKind::kVoid; }
   bool isFunction() const { return kind == TypeKind::kFunction; }
   bool isValid() const { return kind != TypeKind::kInvalid; }
+  bool isPointer() const { return kind == TypeKind::KPointer; }
 
 protected:
-  enum class TypeKind { kInvalid, kInteger, kVoid, kFunction };
+  enum class TypeKind { kInvalid, kInteger, kVoid, kFunction, KPointer };
   explicit Type(TypeKind k = TypeKind::kInvalid) : kind(k) {}
   TypeKind kind;
 };
@@ -63,6 +65,18 @@ public:
 private:
   std::optional<Type *> _returnType;
   std::vector<Type *> paramTypes;
+};
+
+class PointerType : public Type {
+public:
+  explicit PointerType(IRContext &context, Type *pointeeType)
+      : Type(TypeKind::KPointer), pointeeType(pointeeType) {}
+  Type *getPointeeType() const { return pointeeType; }
+
+  static PointerType *get(IRContext &context, Type *pointeeType);
+
+private:
+  Type *pointeeType;
 };
 
 } // namespace ir
