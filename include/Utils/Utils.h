@@ -22,11 +22,9 @@ public:
       if (found != it->end() &&
           std::holds_alternative<int32_t>(found->second)) {
         return std::get<int32_t>(found->second);
-      } else {
-        assert(false && "Constant not found in symbol table");
       }
     }
-    assert(false && "Constant not found");
+    assert(false && "Constant not found in symbol table");
   }
 
   ir::Value *getValue(const std::string &name) const {
@@ -35,11 +33,9 @@ public:
       if (found != it->end() &&
           std::holds_alternative<ir::Value *>(found->second)) {
         return std::get<ir::Value *>(found->second);
-      } else {
-        assert(false && "Value not found in symbol table");
       }
     }
-    assert(false && "Constant not found");
+    assert(false && "Value not found in symbol table");
   }
 
   Val get(const std::string &name) const {

@@ -42,6 +42,11 @@ void RISCVAsmPrinter::emitOperands(const std::vector<mc::MCOperand> &operands) {
       out << getRegisterName(static_cast<Register>(op.getReg().id()));
     } else if (op.isImm()) {
       out << op.getImm();
+    } else if (op.isMem()) {
+      mc::MCMemory mem = op.getMem();
+      out << mem.getOffset() << "("
+          << getRegisterName(static_cast<Register>(mem.getBaseReg().id()))
+          << ")";
     } else {
       assert(false && "Unsupported operand type");
     }

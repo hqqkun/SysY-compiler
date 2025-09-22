@@ -18,15 +18,29 @@ private:
   uint64_t regNum;
 };
 
+class MCMemory {
+public:
+  constexpr MCMemory(uint64_t base, uint32_t off)
+      : baseReg(base), offset(off) {}
+  constexpr const MCRegister &getBaseReg() const { return baseReg; }
+  constexpr uint32_t getOffset() const { return offset; }
+
+private:
+  MCRegister baseReg;
+  uint32_t offset;
+};
+
 class MCOperand {
   enum class MachineOperandType {
     kInvalid,
     kRegister,
     KImmediate, // Immediate integer value.
+    kMemory,    // Memory operand (not implemented yet).
   };
 
-  using OperandValue = std::variant<uint64_t, // RegVal
-                                    int32_t   // ImmVal
+  using OperandValue = std::variant<uint64_t,                     // RegVal
+                                    int32_t,                      // ImmVal
+                                    std::pair<uint64_t, uint32_t> // MemVal
                                     >;
 
 public:
@@ -34,6 +48,7 @@ public:
   bool isValid() const { return kind != MachineOperandType::kInvalid; }
   bool isReg() const { return kind == MachineOperandType::kRegister; }
   bool isImm() const { return kind == MachineOperandType::KImmediate; }
+  bool isMem() const { return kind == MachineOperandType::kMemory; }
 
   int32_t getImm() const {
     assert(isImm() && "This is not an immediate");
@@ -55,6 +70,17 @@ public:
     value = reg.id();
   }
 
+  MCMemory getMem() const {
+    assert(isMem() && "This is not a memory operand");
+    auto [base, offset] = std::get<std::pair<uint64_t, uint32_t>>(value);
+    return MCMemory(base, offset);
+  }
+
+  void setMem(const MCMemory &mem) {
+    assert(isMem() && "This is not a memory operand");
+    value = std::make_pair(mem.getBaseReg().id(), mem.getOffset());
+  }
+
   static MCOperand createImm(int32_t val) {
     MCOperand op;
     op.kind = MachineOperandType::KImmediate;
@@ -66,6 +92,13 @@ public:
     MCOperand op;
     op.kind = MachineOperandType::kRegister;
     op.value = reg.id();
+    return op;
+  }
+
+  static MCOperand createMem(uint64_t baseReg, uint32_t offset) {
+    MCOperand op;
+    op.kind = MachineOperandType::kMemory;
+    op.value = std::make_pair(baseReg, offset);
     return op;
   }
 
