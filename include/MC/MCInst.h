@@ -35,7 +35,7 @@ class MCOperand {
     kInvalid,
     kRegister,
     KImmediate, // Immediate integer value.
-    kMemory,    // Memory operand (not implemented yet).
+    kMemory,    // Memory operand.
   };
 
   using OperandValue = std::variant<uint64_t,                     // RegVal

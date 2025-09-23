@@ -85,7 +85,7 @@ BType
     }
     ;
 
-/// Decleration
+/// Declaration
 Decl
     : ConstDecl {
       auto decl = std::unique_ptr<ast::BaseAST>($1);
