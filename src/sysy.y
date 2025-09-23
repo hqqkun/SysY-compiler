@@ -26,6 +26,7 @@ void yyerror(std::unique_ptr<ast::BaseAST>& ast, const char* s);
   int int_val;
   std::string* str_val;
   ast::BaseAST* ast_val;
+  ast::BlockAST* block_val;
   std::vector<ast::ASTPtr>* astVec;
   std::vector<ast::BlockItemPtr>* blockItemVec;
   ast::BlockItemAST* blockItem;
@@ -206,10 +207,25 @@ Stmt
       auto exp = std::unique_ptr<ast::BaseAST>($2);
       $$ = new ast::ReturnStmtAST(std::move(exp));
     }
+    | RETURN ';' {
+      $$ = new ast::ReturnStmtAST();
+    }
     | LVal T_ASSIGN EXP ';' {
       auto var = std::unique_ptr<ast::BaseAST>($1);
       auto exp = std::unique_ptr<ast::BaseAST>($3);
       $$ = new ast::AssignStmtAST(std::move(var), std::move(exp));
+    }
+    | Block {
+      auto block = std::unique_ptr<ast::BlockAST>(static_cast<ast::BlockAST*>($1));
+      $$ = new ast::BlockStmtAST(std::move(block));
+    }
+    | EXP ';' {
+      auto exp = std::unique_ptr<ast::BaseAST>($1);
+      $$ = new ast::ExprStmtAST(std::move(exp));
+    }
+    | ';' {
+      // Empty statement.
+      $$ = new ast::ExprStmtAST();
     }
     ;
 

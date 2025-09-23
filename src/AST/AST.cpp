@@ -181,6 +181,22 @@ void AssignStmtAST::dump() const {
   std::cout << " }";
 }
 
+void ExprStmtAST::dump() const {
+  std::cout << "ExprStmtAST { ";
+  if (exp) {
+    exp->dump();
+  }
+  std::cout << " }";
+}
+
+void BlockStmtAST::dump() const {
+  std::cout << "BlockStmtAST { ";
+  if (block) {
+    block->dump();
+  }
+  std::cout << " }";
+}
+
 /// Expression dumping
 void ExprAST::dump() const {
   std::cout << "ExprAST { ";

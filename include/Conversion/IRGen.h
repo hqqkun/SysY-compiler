@@ -24,7 +24,7 @@ private:
   SymbolTable varTables;
   interpreter::Interpreter interpreter;
 
-  ir::BasicBlock *convertBlock(ast::BlockAST *blockAST);
+  void convertBlock(ir::IRBuilder &builder, ast::BlockAST *blockAST);
 
   /// Convert statements.
   void convertStmt(ir::IRBuilder &builder, ast::StmtAST *stmtAST);

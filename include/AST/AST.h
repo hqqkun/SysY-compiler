@@ -142,6 +142,7 @@ public:
   ASTPtr exp;
   void dump() const override;
 
+  ReturnStmtAST() : exp(nullptr) {}
   ReturnStmtAST(ASTPtr e) : exp(std::move(e)) {}
 };
 
@@ -153,6 +154,22 @@ public:
 
   AssignStmtAST(ASTPtr lval, ASTPtr e)
       : lVal(std::move(lval)), exp(std::move(e)) {}
+};
+
+class ExprStmtAST : public StmtAST {
+public:
+  ASTPtr exp; // can be nullptr.
+  void dump() const override;
+
+  ExprStmtAST() : exp(nullptr) {}
+  ExprStmtAST(ASTPtr e) : exp(std::move(e)) {}
+};
+
+class BlockStmtAST : public StmtAST {
+public:
+  std::unique_ptr<BlockAST> block;
+  void dump() const override;
+  BlockStmtAST(std::unique_ptr<BlockAST> b) : block(std::move(b)) {}
 };
 
 /// Expression
