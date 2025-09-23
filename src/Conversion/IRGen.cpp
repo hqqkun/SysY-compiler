@@ -153,7 +153,8 @@ ir::Value *IRGen::convertLval(ir::IRBuilder &builder, ast::LValAST *lvalAST) {
     return builder.create<ir::LoadOp>(lvalPtr)->getResult();
   } else {
     assert(std::holds_alternative<int32_t>(lval) &&
-           "LVal must be a constant if not a variable");
+           "LVal symbol table entry must contain either a variable pointer or "
+           "constant value");
     int32_t value = std::get<int32_t>(lval);
     return ir::Integer::get(builder.getContext(), value, 32);
   }

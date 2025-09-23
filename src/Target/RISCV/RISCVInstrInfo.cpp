@@ -104,10 +104,10 @@ void RISCVInstrInfo::lowerReturn(ReturnOp *retOp,
   } else {
     // Return with value.
     Register retReg = lowerOperand(retVal, Register::A0, outInsts);
-    // Small optimization: if the retReg is not A0, move it to A0.
-    if (retReg != riscv::A0) {
+    // If the returned register is ZERO, load immediate 0 into A0.
+    if (retReg == riscv::ZERO) {
       outInsts.push_back(
-          mc::MCInstBuilder(riscv::MV).addReg(riscv::A0).addReg(retReg));
+          mc::MCInstBuilder(riscv::LI).addReg(riscv::A0).addImm(0));
     }
   }
 
