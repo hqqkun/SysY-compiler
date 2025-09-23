@@ -181,6 +181,12 @@ void IRGen::convertStmt(ir::IRBuilder &builder, StmtAST *stmtAST) {
     convertReturnStmt(builder, returnStmtAST);
   } else if (auto *assignStmtAST = dynamic_cast<AssignStmtAST *>(stmtAST)) {
     convertAssignStmt(builder, assignStmtAST);
+  } else if (auto *exprStmtAST = dynamic_cast<ExprStmtAST *>(stmtAST)) {
+    if (exprStmtAST->exp) {
+      dispatchAndConvert(builder, exprStmtAST->exp.get());
+    }
+  } else if (auto *blockStmtAST = dynamic_cast<BlockStmtAST *>(stmtAST)) {
+    convertBlock(builder, blockStmtAST->block.get());
   } else {
     assert(false && "Unknown statement type");
   }
@@ -189,6 +195,12 @@ void IRGen::convertStmt(ir::IRBuilder &builder, StmtAST *stmtAST) {
 void IRGen::convertReturnStmt(ir::IRBuilder &builder,
                               ReturnStmtAST *returnStmtAST) {
   assert(returnStmtAST && "ReturnStmtAST cannot be null");
+  // Void return.
+  if (!returnStmtAST->exp) {
+    builder.create<ir::ReturnOp>();
+    return;
+  }
+  // Return with a value.
   ir::Value *returnVal = dispatchAndConvert(builder, returnStmtAST->exp.get());
   assert(returnVal && "Return value cannot be null");
   builder.create<ir::ReturnOp>(returnVal);
@@ -259,9 +271,13 @@ void IRGen::convertVarDef(ir::IRBuilder &builder, ast::VarDefAST *varDefAST,
   assert(varDefAST && "VarDefAST cannot be null");
 
   // 1. Create allocation.
+  // Since we allow variable shadowing, we append the current scope depth to
+  // the variable name to ensure uniqueness.
+  std::string varName =
+      varDefAST->var + "_" + std::to_string(varTables.depth());
   ir::Type *allocType = ASTType2IRType(context, bType);
   ir::Value *alloc =
-      builder.create<ir::AllocOp>(varDefAST->var, allocType, 1)->getResult();
+      builder.create<ir::AllocOp>(varName, allocType, 1)->getResult();
   varTables.setValue(varDefAST->var, alloc);
 
   // 2. If there is an initializer, evaluate it and store the value.
@@ -272,13 +288,13 @@ void IRGen::convertVarDef(ir::IRBuilder &builder, ast::VarDefAST *varDefAST,
   }
 }
 
-ir::BasicBlock *IRGen::convertBlock(BlockAST *blockAST) {
+void IRGen::convertBlock(ir::IRBuilder &builder, BlockAST *blockAST) {
   if (!blockAST)
-    return nullptr;
+    return;
 
-  ir::BasicBlock *block = ir::BasicBlock::create(context, "entry");
-  ir::IRBuilder builder(context);
-  builder.setInsertPoint(block);
+  // Enter a new scope for the block.
+  varTables.enterScope();
+
   size_t size = blockAST->blockItems->size();
   for (size_t i = 0; i < size; ++i) {
     BlockItemAST *item = (*blockAST->blockItems)[i].get();
@@ -290,7 +306,8 @@ ir::BasicBlock *IRGen::convertBlock(BlockAST *blockAST) {
       assert(false && "Unknown block item type");
     }
   }
-  return block;
+  // Exit the scope after finishing the block.
+  varTables.exitScope();
 }
 
 ir::Function *IRGen::generate(std::unique_ptr<ast::BaseAST> &ast) {
@@ -304,13 +321,14 @@ ir::Function *IRGen::generate(std::unique_ptr<ast::BaseAST> &ast) {
   if (!funcDef || !funcType)
     return nullptr;
 
-  ir::IRBuilder builder(context);
   ir::Function *function =
       ir::Function::create(context, funcDef->ident, funcType);
-  if (auto *entryBlock =
-          convertBlock(dynamic_cast<BlockAST *>(funcDef->block.get()))) {
-    function->addBlock(entryBlock);
-  }
+
+  ir::IRBuilder builder(context);
+  ir::BasicBlock *entryBlock = ir::BasicBlock::create(context, "entry");
+  builder.setInsertPoint(entryBlock);
+  function->addBlock(entryBlock);
+  convertBlock(builder, dynamic_cast<BlockAST *>(funcDef->block.get()));
 
   return function;
 }
