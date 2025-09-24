@@ -3,6 +3,8 @@
 
 #include <cassert>
 #include <cstdint>
+#include <string>
+#include <string_view>
 #include <variant>
 #include <vector>
 
@@ -30,17 +32,28 @@ private:
   uint32_t offset;
 };
 
+class MCLabel {
+public:
+  MCLabel(std::string_view lbl) : label(lbl) {}
+  std::string_view getLabel() const { return label; }
+
+private:
+  std::string label;
+};
+
 class MCOperand {
   enum class MachineOperandType {
     kInvalid,
     kRegister,
     KImmediate, // Immediate integer value.
     kMemory,    // Memory operand.
+    kLabel      // Label operand.
   };
 
-  using OperandValue = std::variant<uint64_t,                     // RegVal
-                                    int32_t,                      // ImmVal
-                                    std::pair<uint64_t, uint32_t> // MemVal
+  using OperandValue = std::variant<uint64_t,                      // RegVal
+                                    int32_t,                       // ImmVal
+                                    std::pair<uint64_t, uint32_t>, // MemVal
+                                    std::string_view               // LabelVal
                                     >;
 
 public:
@@ -49,6 +62,7 @@ public:
   bool isReg() const { return kind == MachineOperandType::kRegister; }
   bool isImm() const { return kind == MachineOperandType::KImmediate; }
   bool isMem() const { return kind == MachineOperandType::kMemory; }
+  bool isLabel() const { return kind == MachineOperandType::kLabel; }
 
   int32_t getImm() const {
     assert(isImm() && "This is not an immediate");
@@ -81,6 +95,16 @@ public:
     value = std::make_pair(mem.getBaseReg().id(), mem.getOffset());
   }
 
+  MCLabel getLabel() const {
+    assert(isLabel() && "This is not a label operand");
+    return MCLabel(std::get<std::string_view>(value));
+  }
+
+  void setLabel(const MCLabel &lbl) {
+    assert(isLabel() && "This is not a label operand");
+    value = lbl.getLabel();
+  }
+
   static MCOperand createImm(int32_t val) {
     MCOperand op;
     op.kind = MachineOperandType::KImmediate;
@@ -99,6 +123,13 @@ public:
     MCOperand op;
     op.kind = MachineOperandType::kMemory;
     op.value = std::make_pair(baseReg, offset);
+    return op;
+  }
+
+  static MCOperand createLabel(std::string_view label) {
+    MCOperand op;
+    op.kind = MachineOperandType::kLabel;
+    op.value = label;
     return op;
   }
 

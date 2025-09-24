@@ -35,6 +35,7 @@ RISCVISel::selectInstructions(const ir::Function *func) {
 
   // 3. Lower each operation to machine instructions.
   for (ir::BasicBlock *bb : *func) {
+    instrInfo.emitLabel(bb->getName(), mcInsts);
     for (ir::Operation *op : *bb) {
       if (auto *retOp = dynamic_cast<ir::ReturnOp *>(op)) {
         instrInfo.lowerReturn(retOp, mcInsts, stackSize);
@@ -48,6 +49,10 @@ RISCVISel::selectInstructions(const ir::Function *func) {
         // AllocOp does not generate any instructions directly.
         // Stack slot is already allocated in the first pass.
         (void)alloc; // Suppress unused variable warning.
+      } else if (auto *branch = dynamic_cast<ir::BranchOp *>(op)) {
+        instrInfo.lowerBranchOp(branch, mcInsts);
+      } else if (auto *jump = dynamic_cast<ir::JumpOp *>(op)) {
+        instrInfo.lowerJumpOp(jump, mcInsts);
       } else {
         // Handle other operation types here.
         // For now, we can just ignore them or throw an error.

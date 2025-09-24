@@ -175,6 +175,40 @@ void RISCVInstrInfo::lowerStoreOp(ir::StoreOp *storeOp,
       mc::MCInstBuilder(riscv::SW).addReg(valReg).addMem(riscv::SP, ptrSlot));
 }
 
+void RISCVInstrInfo::lowerBranchOp(ir::BranchOp *brOp,
+                                   std::vector<mc::MCInst> &outInsts) {
+  assert(brOp && "BranchOp is null");
+  ir::JumpArg *thenArg = dynamic_cast<ir::JumpArg *>(brOp->getThenArg());
+  ir::JumpArg *elseArg = dynamic_cast<ir::JumpArg *>(brOp->getElseArg());
+  assert(thenArg && elseArg && "BranchOp arguments must be JumpArg");
+  Value *cond = brOp->getCondition();
+  ir::BasicBlock *thenBB = thenArg->getTargetBB();
+  ir::BasicBlock *elseBB = elseArg->getTargetBB();
+  assert(cond && thenBB && elseBB && "BranchOp operands cannot be null");
+
+  Register condReg = lowerOperand(cond, Register::T0, outInsts);
+  // BNEZ condReg, thenBB
+  outInsts.push_back(mc::MCInstBuilder(riscv::BNEZ)
+                         .addReg(condReg)
+                         .addLabel(thenBB->getName()));
+  // JUMP elseBB
+  outInsts.push_back(
+      mc::MCInstBuilder(riscv::JUMP).addLabel(elseBB->getName()));
+}
+
+void RISCVInstrInfo::lowerJumpOp(ir::JumpOp *jumpOp,
+                                 std::vector<mc::MCInst> &outInsts) {
+  assert(jumpOp && "JumpOp is null");
+  ir::JumpArg *targetArg = dynamic_cast<ir::JumpArg *>(jumpOp->getArg());
+  assert(targetArg && "JumpOp target must be JumpArg");
+  ir::BasicBlock *targetBB = targetArg->getTargetBB();
+  assert(targetBB && "JumpOp target BasicBlock cannot be null");
+
+  // JUMP targetBB
+  outInsts.push_back(
+      mc::MCInstBuilder(riscv::JUMP).addLabel(targetBB->getName()));
+}
+
 Register RISCVInstrInfo::lowerOperand(ir::Value *val, Register temp,
                                       std::vector<mc::MCInst> &outInsts) {
   assert(val && "Value is null");
@@ -207,6 +241,11 @@ void RISCVInstrInfo::emitPrologue(std::vector<mc::MCInst> &outInsts,
   }
 }
 
+void RISCVInstrInfo::emitLabel(std::string_view label,
+                               std::vector<mc::MCInst> &outInsts) {
+  outInsts.push_back(mc::MCInstBuilder(riscv::LABEL).addLabel(label));
+}
+
 std::string_view getRegisterName(Register reg) {
   static std::unordered_map<Register, std::string_view> regNames = {
       {ZERO, "zero"}, {RA, "ra"}, {SP, "sp"},   {GP, "gp"},   {TP, "tp"},
@@ -225,10 +264,10 @@ std::string_view getRegisterName(Register reg) {
 
 std::string_view getOpTypeName(OpType op) {
   static const std::unordered_map<OpType, std::string_view> opNames = {
-      {ADD, "add"}, {ADDI, "addi"}, {AND, "and"}, {DIV, "div"}, {LI, "li"},
-      {LW, "lw"},   {MUL, "mul"},   {MV, "mv"},   {OR, "or"},   {REM, "rem"},
-      {RET, "ret"}, {SEQZ, "seqz"}, {SGT, "sgt"}, {SLT, "slt"}, {SNEZ, "snez"},
-      {SUB, "sub"}, {SW, "sw"},     {XOR, "xor"}};
+      {ADD, "add"}, {ADDI, "addi"}, {AND, "and"}, {BNEZ, "bnez"}, {DIV, "div"},
+      {JUMP, "j"},  {LI, "li"},     {LW, "lw"},   {MUL, "mul"},   {MV, "mv"},
+      {OR, "or"},   {REM, "rem"},   {RET, "ret"}, {SEQZ, "seqz"}, {SGT, "sgt"},
+      {SLT, "slt"}, {SNEZ, "snez"}, {SUB, "sub"}, {SW, "sw"},     {XOR, "xor"}};
 
   if (auto it = opNames.find(op); it != opNames.end()) {
     return it->second;
