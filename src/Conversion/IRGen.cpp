@@ -1,4 +1,5 @@
 #include <cassert>
+#include <string>
 #include <variant>
 
 #include "AST/AST.h"
@@ -187,6 +188,8 @@ void IRGen::convertStmt(ir::IRBuilder &builder, StmtAST *stmtAST) {
     }
   } else if (auto *blockStmtAST = dynamic_cast<BlockStmtAST *>(stmtAST)) {
     convertBlock(builder, blockStmtAST->block.get());
+  } else if (auto *ifStmtAST = dynamic_cast<IfStmtAST *>(stmtAST)) {
+    convertIfStmt(builder, ifStmtAST);
   } else {
     assert(false && "Unknown statement type");
   }
@@ -220,6 +223,41 @@ void IRGen::convertAssignStmt(ir::IRBuilder &builder,
   ir::Value *rhsValue = dispatchAndConvert(builder, assignStmtAST->exp.get());
   assert(rhsValue && "Right-hand side value cannot be null in assignment");
   builder.create<ir::StoreOp>(rhsValue, lvalPtr);
+}
+
+void IRGen::convertIfStmt(ir::IRBuilder &builder, ast::IfStmtAST *ifStmtAST) {
+  assert(ifStmtAST && "IfStmtAST cannot be null");
+  ir::Value *cond = dispatchAndConvert(builder, ifStmtAST->cond.get());
+
+  // 1. Create `then`, `else` and `end` blocks, this is for easy implementation.
+  uint64_t nextID = getNextBlockId();
+  ir::BasicBlock *thenBlock =
+      ir::BasicBlock::create(context, "then_" + std::to_string(nextID));
+  ir::BasicBlock *elseBlock =
+      ir::BasicBlock::create(context, "else_" + std::to_string(nextID));
+  ir::BasicBlock *endBlock =
+      ir::BasicBlock::create(context, "end_" + std::to_string(nextID));
+  ir::JumpArg *thenArg = ir::JumpArg::get(context, thenBlock);
+  ir::JumpArg *elseArg = ir::JumpArg::get(context, elseBlock);
+  builder.create<ir::BranchOp>(cond, thenArg, elseArg);
+  builder.commitBlock();
+
+  // 2. Fill in the `then` block.
+  builder.setInsertPoint(thenBlock);
+  convertStmt(builder, ifStmtAST->thenStmt.get());
+  builder.create<ir::JumpOp>(ir::JumpArg::get(context, endBlock));
+  builder.commitBlock();
+
+  // 3. Fill in the `else` block if exists, otherwise create a jump to the end.
+  builder.setInsertPoint(elseBlock);
+  if (ifStmtAST->elseStmt) {
+    convertStmt(builder, ifStmtAST->elseStmt.get());
+  }
+  builder.create<ir::JumpOp>(ir::JumpArg::get(context, endBlock));
+  builder.commitBlock();
+
+  // 4. Set the insertion point to the end block.
+  builder.setInsertPoint(endBlock);
 }
 
 /// Convert declarations and definitions.
@@ -325,10 +363,11 @@ ir::Function *IRGen::generate(std::unique_ptr<ast::BaseAST> &ast) {
       ir::Function::create(context, funcDef->ident, funcType);
 
   ir::IRBuilder builder(context);
+  builder.setCurrentFunction(function);
   ir::BasicBlock *entryBlock = ir::BasicBlock::create(context, "entry");
   builder.setInsertPoint(entryBlock);
-  function->addBlock(entryBlock);
   convertBlock(builder, dynamic_cast<BlockAST *>(funcDef->block.get()));
+  builder.commitBlock();
 
   return function;
 }

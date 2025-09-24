@@ -13,6 +13,8 @@ namespace ast {
 using ASTPtr = std::unique_ptr<class BaseAST>;
 using BlockItemPtr = std::unique_ptr<class BlockItemAST>;
 
+class ExprAST;
+
 class BaseAST {
 public:
   virtual ~BaseAST() = default;
@@ -170,6 +172,20 @@ public:
   std::unique_ptr<BlockAST> block;
   void dump() const override;
   BlockStmtAST(std::unique_ptr<BlockAST> b) : block(std::move(b)) {}
+};
+
+class IfStmtAST : public StmtAST {
+public:
+  std::unique_ptr<ExprAST> cond;
+  std::unique_ptr<StmtAST> thenStmt;
+  std::unique_ptr<StmtAST> elseStmt; // can be nullptr
+  void dump() const override;
+
+  IfStmtAST(std::unique_ptr<ExprAST> c, std::unique_ptr<StmtAST> t)
+      : cond(std::move(c)), thenStmt(std::move(t)), elseStmt(nullptr) {}
+  IfStmtAST(std::unique_ptr<ExprAST> c, std::unique_ptr<StmtAST> t,
+            std::unique_ptr<StmtAST> e)
+      : cond(std::move(c)), thenStmt(std::move(t)), elseStmt(std::move(e)) {}
 };
 
 /// Expression

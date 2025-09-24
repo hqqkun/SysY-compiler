@@ -14,4 +14,9 @@ Integer *Integer::get(IRContext &context, int val, unsigned int bitwidth) {
   return context.create<Integer>(val, type);
 }
 
+/// Static factory method to create JumpArg values using IRContext.
+JumpArg *JumpArg::get(IRContext &context, BasicBlock *bb) {
+  return context.create<JumpArg>(bb);
+}
+
 } // namespace ir

@@ -158,6 +158,24 @@ public:
   std::string_view getOpName() const override { return "store"; }
 };
 
+class BranchOp : public Operation {
+public:
+  explicit BranchOp(IRContext &context, Value *cond, Value *thenArg,
+                    Value *elseArg);
+  Value *getCondition() const { return getOperand(0); }
+  Value *getThenArg() const { return getOperand(1); }
+  Value *getElseArg() const { return getOperand(2); }
+
+  std::string_view getOpName() const override { return "br"; }
+};
+
+class JumpOp : public Operation {
+public:
+  explicit JumpOp(IRContext &context, Value *arg);
+  Value *getArg() const { return getOperand(0); }
+  std::string_view getOpName() const override { return "jump"; }
+};
+
 } // namespace ir
 
 #endif // __IR_OPERATION_H__

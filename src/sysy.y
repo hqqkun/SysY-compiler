@@ -35,7 +35,7 @@ void yyerror(std::unique_ptr<ast::BaseAST>& ast, const char* s);
 }
 
 
-%token INT RETURN CONST T_MUL T_DIV T_MOD T_ADD T_SUB T_BANG T_LE T_GE T_LT T_GT T_EQ T_NEQ T_AND T_OR T_ASSIGN
+%token INT IF ELSE RETURN CONST T_MUL T_DIV T_MOD T_ADD T_SUB T_BANG T_LE T_GE T_LT T_GT T_EQ T_NEQ T_AND T_OR T_ASSIGN
 %token <int_val> INT_CONST
 %token <str_val> IDENT
 
@@ -49,6 +49,9 @@ void yyerror(std::unique_ptr<ast::BaseAST>& ast, const char* s);
 %type <blockItem> BlockItem
 %type <type> BType
 %type <int_val> Number
+
+%nonassoc THEN
+%nonassoc ELSE
 
 %%
 
@@ -218,6 +221,17 @@ Stmt
     | Block {
       auto block = std::unique_ptr<ast::BlockAST>(static_cast<ast::BlockAST*>($1));
       $$ = new ast::BlockStmtAST(std::move(block));
+    }
+    | IF '(' EXP ')' Stmt %prec THEN {
+      auto cond = std::unique_ptr<ast::ExprAST>(static_cast<ast::ExprAST*>($3));
+      auto thenStmt = std::unique_ptr<ast::StmtAST>(static_cast<ast::StmtAST*>($5));
+      $$ = new ast::IfStmtAST(std::move(cond), std::move(thenStmt));
+    }
+    | IF '(' EXP ')' Stmt ELSE Stmt {
+      auto cond = std::unique_ptr<ast::ExprAST>(static_cast<ast::ExprAST*>($3));
+      auto thenStmt = std::unique_ptr<ast::StmtAST>(static_cast<ast::StmtAST*>($5));
+      auto elseStmt = std::unique_ptr<ast::StmtAST>(static_cast<ast::StmtAST*>($7));
+      $$ = new ast::IfStmtAST(std::move(cond), std::move(thenStmt), std::move(elseStmt));
     }
     | EXP ';' {
       auto exp = std::unique_ptr<ast::BaseAST>($1);
