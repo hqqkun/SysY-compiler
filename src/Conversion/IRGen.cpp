@@ -201,12 +201,19 @@ void IRGen::convertReturnStmt(ir::IRBuilder &builder,
   // Void return.
   if (!returnStmtAST->exp) {
     builder.create<ir::ReturnOp>();
-    return;
+  } else {
+    // Return with a value.
+    ir::Value *returnVal =
+        dispatchAndConvert(builder, returnStmtAST->exp.get());
+    assert(returnVal && "Return value cannot be null");
+    builder.create<ir::ReturnOp>(returnVal);
   }
-  // Return with a value.
-  ir::Value *returnVal = dispatchAndConvert(builder, returnStmtAST->exp.get());
-  assert(returnVal && "Return value cannot be null");
-  builder.create<ir::ReturnOp>(returnVal);
+  // Commit the current block and create an unreachable block to prevent
+  // fall-through.
+  builder.commitBlock();
+  ir::BasicBlock *unreach = ir::BasicBlock::create(
+      context, "unreachable_" + std::to_string(getNextBlockId()));
+  builder.setInsertPoint(unreach);
 }
 
 void IRGen::convertAssignStmt(ir::IRBuilder &builder,
