@@ -26,6 +26,16 @@ void RISCVAsmPrinter::emitFunction(const ir::Function *func,
 void RISCVAsmPrinter::emitInstructions(const std::vector<mc::MCInst> &instrs) {
   for (const mc::MCInst &instr : instrs) {
     auto opType = static_cast<OpType>(instr.getOpType());
+
+    // Handle labels separately.
+    if (opType == LABEL) {
+      assert(instr.getNumOperands() == 1 &&
+             "LABEL instruction must have exactly one operand");
+      const mc::MCOperand &op = instr.getOperand(0);
+      assert(op.isLabel() && "LABEL operand must be a label");
+      out << op.getLabel().getLabel() << ":\n";
+      continue;
+    }
     out << "\t" << getOpTypeName(opType) << "\t";
     emitOperands(instr.getOperands());
     out << "\n";
@@ -47,6 +57,8 @@ void RISCVAsmPrinter::emitOperands(const std::vector<mc::MCOperand> &operands) {
       out << mem.getOffset() << "("
           << getRegisterName(static_cast<Register>(mem.getBaseReg().id()))
           << ")";
+    } else if (op.isLabel()) {
+      out << op.getLabel().getLabel();
     } else {
       assert(false && "Unsupported operand type");
     }

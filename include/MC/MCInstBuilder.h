@@ -27,6 +27,11 @@ public:
     return *this;
   }
 
+  MCInstBuilder &addLabel(std::string_view label) {
+    inst.addOperand(MCOperand::createLabel(label));
+    return *this;
+  }
+
   operator MCInst &() { return inst; }
 
 private:

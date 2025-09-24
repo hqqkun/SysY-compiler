@@ -17,9 +17,12 @@ enum OpType {
   ADD,
   ADDI,
   AND,
+  BNEZ, // Branch if Not Equal to Zero
   DIV,
-  LI, // Load Immediate
-  LW, // Load Word
+  JUMP,
+  LABEL, // Label
+  LI,    // Load Immediate
+  LW,    // Load Word
   MUL,
   MV,
   OR,
@@ -79,8 +82,11 @@ public:
   void lowerBinaryOp(ir::BinaryOp *binOp, std::vector<mc::MCInst> &outInsts);
   void lowerLoadOp(ir::LoadOp *loadOp, std::vector<mc::MCInst> &outInsts);
   void lowerStoreOp(ir::StoreOp *storeOp, std::vector<mc::MCInst> &outInsts);
+  void lowerBranchOp(ir::BranchOp *brOp, std::vector<mc::MCInst> &outInsts);
+  void lowerJumpOp(ir::JumpOp *jumpOp, std::vector<mc::MCInst> &outInsts);
   void emitPrologue(std::vector<mc::MCInst> &outInsts,
                     const uint32_t stackSize = 0);
+  void emitLabel(std::string_view label, std::vector<mc::MCInst> &outInsts);
 
   void resetMap() {
     value2RegMap.clear();
