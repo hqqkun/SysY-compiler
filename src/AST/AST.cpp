@@ -197,6 +197,22 @@ void BlockStmtAST::dump() const {
   std::cout << " }";
 }
 
+void IfStmtAST::dump() const {
+  std::cout << "IfStmtAST { ";
+  if (cond) {
+    cond->dump();
+  }
+  if (thenStmt) {
+    std::cout << ", ";
+    thenStmt->dump();
+  }
+  if (elseStmt) {
+    std::cout << ", ";
+    elseStmt->dump();
+  }
+  std::cout << " }";
+}
+
 /// Expression dumping
 void ExprAST::dump() const {
   std::cout << "ExprAST { ";

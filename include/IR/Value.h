@@ -5,6 +5,7 @@
 #include <string>
 #include <unordered_set>
 
+#include "IR/BasicBlock.h"
 #include "IR/IRContext.h"
 #include "IR/Object.h"
 #include "IR/Operation.h"
@@ -20,12 +21,13 @@ public:
   bool isInteger() const { return getKind() == ValueKind::kInteger; }
   bool isOpResult() const { return getKind() == ValueKind::kOpResult; }
   bool isFuncArg() const { return getKind() == ValueKind::kFuncArg; }
+  bool isJumpArg() const { return getKind() == ValueKind::kJumpArg; }
   const std::unordered_set<Operation *> &getUsers() const { return users; }
   std::unordered_set<Operation *> &getUsers() { return users; }
   void addUser(Operation *u) { users.insert(u); }
 
 protected:
-  enum class ValueKind { kInvalid, kInteger, kOpResult, kFuncArg };
+  enum class ValueKind { kInvalid, kInteger, kOpResult, kFuncArg, kJumpArg };
   explicit Value(Type *type = nullptr, ValueKind kind = ValueKind::kInvalid)
       : _type(type), _kind(kind) {}
   ValueKind getKind() const { return _kind; }
@@ -66,6 +68,20 @@ public:
 private:
   std::string name; // argument name
   size_t index;     // argument index in the function
+};
+
+/// For representing jump
+class JumpArg : public Value {
+public:
+  explicit JumpArg(IRContext &context, BasicBlock *bb)
+      : Value(nullptr, ValueKind::kJumpArg), bb(bb) {}
+
+  BasicBlock *getTargetBB() const { return bb; }
+
+  static JumpArg *get(IRContext &context, BasicBlock *bb);
+
+private:
+  BasicBlock *bb; // target basic block
 };
 
 } // namespace ir

@@ -16,13 +16,15 @@ namespace conversion {
 
 class IRGen {
 public:
-  explicit IRGen(ir::IRContext &ctx) : context(ctx), interpreter(varTables) {}
+  explicit IRGen(ir::IRContext &ctx)
+      : context(ctx), interpreter(varTables), nextBlockId(0) {}
   ir::Function *generate(std::unique_ptr<ast::BaseAST> &ast);
 
 private:
   ir::IRContext &context;
   SymbolTable varTables;
   interpreter::Interpreter interpreter;
+  uint64_t nextBlockId;
 
   void convertBlock(ir::IRBuilder &builder, ast::BlockAST *blockAST);
 
@@ -32,6 +34,7 @@ private:
                          ast::ReturnStmtAST *returnStmtAST);
   void convertAssignStmt(ir::IRBuilder &builder,
                          ast::AssignStmtAST *assignStmtAST);
+  void convertIfStmt(ir::IRBuilder &builder, ast::IfStmtAST *ifStmtAST);
   ir::FunctionType *convertFunctionType(ast::FuncTypeAST *funcTypeAST);
 
   /// Convert declarations and definitions.
@@ -55,6 +58,10 @@ private:
   ir::Value *dispatchAndConvert(ir::IRBuilder &builder, ast::BaseAST *ast);
 
   ir::Value *convertLval(ir::IRBuilder &builder, ast::LValAST *lvalAST);
+
+  /// Utility functions for block id management.
+  uint64_t getNextBlockId() { return nextBlockId++; }
+  void resetBlockId() { nextBlockId = 0; }
 };
 
 } // namespace conversion

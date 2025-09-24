@@ -144,4 +144,33 @@ StoreOp::StoreOp(IRContext &context, Value *val, Value *ptr) {
   result = nullptr;
 }
 
+BranchOp::BranchOp(IRContext &context, Value *cond, Value *thenArg,
+                   Value *elseArg) {
+  assert(cond && "BranchOp condition cannot be null");
+  assert(thenArg && "BranchOp then argument cannot be null");
+  assert(elseArg && "BranchOp else argument cannot be null");
+  // Check that thenArg and elseArg are `JumpArg`.
+  assert(thenArg->isJumpArg() && "BranchOp then argument must be a JumpArg");
+  assert(elseArg->isJumpArg() && "BranchOp else argument must be a JumpArg");
+  assert(cond->getType()->isInteger() &&
+         "BranchOp condition must be an integer type");
+  operands.emplace_back(cond);
+  operands.emplace_back(thenArg);
+  operands.emplace_back(elseArg);
+  cond->addUser(this);
+  thenArg->addUser(this);
+  elseArg->addUser(this);
+  result = nullptr;
+  // BranchOp has no result type.
+}
+
+JumpOp::JumpOp(IRContext &context, Value *targetArg) {
+  assert(targetArg && "JumpOp target argument cannot be null");
+  assert(targetArg->isJumpArg() && "JumpOp target argument must be a JumpArg");
+  operands.emplace_back(targetArg);
+  targetArg->addUser(this);
+  result = nullptr;
+  // JumpOp has no result type.
+}
+
 } // namespace ir

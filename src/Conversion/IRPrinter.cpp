@@ -12,7 +12,6 @@ namespace conversion {
 
 void IRPrinter::printFunction(ir::Function *func) {
   assert(func && "Function cannot be null");
-  assert(func->size() == 1 && "Only single-block functions are supported");
 
   os << "fun @" << func->getName() << " ";
   printType(func->getFunctionType());
@@ -36,6 +35,10 @@ void IRPrinter::printBasicBlock(ir::BasicBlock *block, OpResultMap &resultMap) {
 void IRPrinter::printOperation(ir::Operation *op, OpResultMap &resultMap) {
   assert(op && "Operation cannot be null");
 
+  os << "\t"; // Create indent.
+
+  // Handle different operation types for printing
+  // AllocOp is handled specially to print variable names.
   if (auto *allocOp = dynamic_cast<ir::AllocOp *>(op)) {
     allocNames[allocOp->getResult()] = allocOp->getVarName();
     os << "@" << allocOp->getVarName() << " = ";
@@ -85,6 +88,9 @@ void IRPrinter::printOperand(ir::Value *operand, OpResultMap &resultMap) {
   } else if (operand->isFuncArg()) {
     ir::FuncArg *funcArg = static_cast<ir::FuncArg *>(operand);
     os << "arg" << funcArg->getIndex();
+  } else if (operand->isJumpArg()) {
+    ir::JumpArg *jumpArg = static_cast<ir::JumpArg *>(operand);
+    os << "%" << jumpArg->getTargetBB()->getName();
   } else {
     assert(false && "Unknown operand type");
   }
