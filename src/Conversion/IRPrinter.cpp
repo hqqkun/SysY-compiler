@@ -18,7 +18,9 @@ void IRPrinter::printFunction(ir::Function *func) {
   os << " {" << std::endl;
   OpResultMap resultMap;
   for (ir::BasicBlock *bb : *func) {
-    printBasicBlock(bb, resultMap);
+    if (bb->size()) {
+      printBasicBlock(bb, resultMap);
+    }
   }
   os << "}" << std::endl;
 }
