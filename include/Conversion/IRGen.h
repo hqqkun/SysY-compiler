@@ -17,7 +17,7 @@ namespace conversion {
 class IRGen {
 public:
   explicit IRGen(ir::IRContext &ctx)
-      : context(ctx), interpreter(varTables), nextBlockId(0) {}
+      : context(ctx), interpreter(varTables), nextBlockId(0), nextTempId(0) {}
   ir::Function *generate(std::unique_ptr<ast::BaseAST> &ast);
 
 private:
@@ -25,6 +25,7 @@ private:
   SymbolTable varTables;
   interpreter::Interpreter interpreter;
   uint64_t nextBlockId;
+  uint64_t nextTempId;
 
   void convertBlock(ir::IRBuilder &builder, ast::BlockAST *blockAST);
 
@@ -61,7 +62,9 @@ private:
 
   /// Utility functions for block id management.
   uint64_t getNextBlockId() { return nextBlockId++; }
+  uint64_t getNextTempId() { return nextTempId++; }
   void resetBlockId() { nextBlockId = 0; }
+  void resetTempId() { nextTempId = 0; }
 };
 
 } // namespace conversion

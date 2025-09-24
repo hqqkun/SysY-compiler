@@ -309,10 +309,9 @@ void IRGen::convertVarDef(ir::IRBuilder &builder, ast::VarDefAST *varDefAST,
   assert(varDefAST && "VarDefAST cannot be null");
 
   // 1. Create allocation.
-  // Since we allow variable shadowing, we append the current scope depth to
-  // the variable name to ensure uniqueness.
-  std::string varName =
-      varDefAST->var + "_" + std::to_string(varTables.depth());
+  // Since we allow variable shadowing, we use a unique name for each
+  // allocation.
+  std::string varName = varDefAST->var + "_" + std::to_string(getNextTempId());
   ir::Type *allocType = ASTType2IRType(context, bType);
   ir::Value *alloc =
       builder.create<ir::AllocOp>(varName, allocType, 1)->getResult();
