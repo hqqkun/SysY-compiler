@@ -1,6 +1,7 @@
 #ifndef __IR_BASICBLOCK_H__
 #define __IR_BASICBLOCK_H__
 
+#include <cassert>
 #include <list>
 #include <ostream>
 #include <string>
@@ -26,6 +27,19 @@ public:
       operations.push_front(op);
     }
   }
+
+  bool isTerminated() const {
+    if (operations.empty())
+      return false;
+    Operation *lastOp = operations.back();
+    return lastOp->isTerminator();
+  }
+
+  Operation *getTerminator() const {
+    assert(isTerminated() && "BasicBlock is not terminated");
+    return operations.back();
+  }
+
   const std::string &getName() const { return name; }
 
   static BasicBlock *create(IRContext &context, const std::string &name) {

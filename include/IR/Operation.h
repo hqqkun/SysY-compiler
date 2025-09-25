@@ -30,6 +30,7 @@ public:
   size_t getNumOperands() const { return operands.size(); }
   bool hasResult() const { return result != nullptr; }
   OpResult *getResult() const { return result; }
+  virtual bool isTerminator() const { return false; }
 
 protected:
   std::vector<Value *> operands;
@@ -128,6 +129,7 @@ public:
   explicit ReturnOp(IRContext &context, Value *retVal = nullptr);
   Value *getReturnValue() const { return getOperand(0); }
   std::string_view getOpName() const override { return "ret"; }
+  bool isTerminator() const override { return true; }
 };
 
 class AllocOp : public Operation {
@@ -167,7 +169,8 @@ public:
    * branch operation. This method is pure virtual to ensure all branch
    * operations define their own name.
    */
-  virtual std::string_view getOpName() const = 0;
+  std::string_view getOpName() const override = 0;
+  bool isTerminator() const override { return true; }
 };
 
 class CondBranchOp : public BranchOp {
