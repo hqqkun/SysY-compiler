@@ -175,15 +175,12 @@ void RISCVInstrInfo::lowerStoreOp(ir::StoreOp *storeOp,
       mc::MCInstBuilder(riscv::SW).addReg(valReg).addMem(riscv::SP, ptrSlot));
 }
 
-void RISCVInstrInfo::lowerBranchOp(ir::BranchOp *brOp,
+void RISCVInstrInfo::lowerBranchOp(ir::CondBranchOp *brOp,
                                    std::vector<mc::MCInst> &outInsts) {
   assert(brOp && "BranchOp is null");
-  ir::JumpArg *thenArg = dynamic_cast<ir::JumpArg *>(brOp->getThenArg());
-  ir::JumpArg *elseArg = dynamic_cast<ir::JumpArg *>(brOp->getElseArg());
-  assert(thenArg && elseArg && "BranchOp arguments must be JumpArg");
   Value *cond = brOp->getCondition();
-  ir::BasicBlock *thenBB = thenArg->getTargetBB();
-  ir::BasicBlock *elseBB = elseArg->getTargetBB();
+  ir::BasicBlock *thenBB = brOp->getThenBB();
+  ir::BasicBlock *elseBB = brOp->getElseBB();
   assert(cond && thenBB && elseBB && "BranchOp operands cannot be null");
 
   Register condReg = lowerOperand(cond, Register::T0, outInsts);
@@ -199,9 +196,7 @@ void RISCVInstrInfo::lowerBranchOp(ir::BranchOp *brOp,
 void RISCVInstrInfo::lowerJumpOp(ir::JumpOp *jumpOp,
                                  std::vector<mc::MCInst> &outInsts) {
   assert(jumpOp && "JumpOp is null");
-  ir::JumpArg *targetArg = dynamic_cast<ir::JumpArg *>(jumpOp->getArg());
-  assert(targetArg && "JumpOp target must be JumpArg");
-  ir::BasicBlock *targetBB = targetArg->getTargetBB();
+  ir::BasicBlock *targetBB = jumpOp->getTargetBB();
   assert(targetBB && "JumpOp target BasicBlock cannot be null");
 
   // JUMP targetBB

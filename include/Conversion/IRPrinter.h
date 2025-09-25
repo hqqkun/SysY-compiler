@@ -46,6 +46,8 @@ private:
 
   void printBasicBlock(ir::BasicBlock *block, OpResultMap &resultMap);
   void printOperation(ir::Operation *op, OpResultMap &resultMap);
+  void printAllocOperation(ir::AllocOp *allocOp, OpResultMap &resultMap);
+  void printBranchOperation(ir::BranchOp *brOp, OpResultMap &resultMap);
   void printOperand(ir::Value *operand, OpResultMap &resultMap);
   void printType(ir::Type *type);
 };

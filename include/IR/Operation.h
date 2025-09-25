@@ -14,6 +14,7 @@ namespace ir {
 
 class Value;
 class OpResult;
+class BasicBlock;
 
 class Operation : public IRObject {
 public:
@@ -160,20 +161,39 @@ public:
 
 class BranchOp : public Operation {
 public:
-  explicit BranchOp(IRContext &context, Value *cond, Value *thenArg,
-                    Value *elseArg);
-  Value *getCondition() const { return getOperand(0); }
-  Value *getThenArg() const { return getOperand(1); }
-  Value *getElseArg() const { return getOperand(2); }
-
-  std::string_view getOpName() const override { return "br"; }
+  /**
+   * Returns the name of the branch operation.
+   * Implementers should provide a unique string identifier for the specific
+   * branch operation. This method is pure virtual to ensure all branch
+   * operations define their own name.
+   */
+  virtual std::string_view getOpName() const = 0;
 };
 
-class JumpOp : public Operation {
+class CondBranchOp : public BranchOp {
 public:
-  explicit JumpOp(IRContext &context, Value *arg);
-  Value *getArg() const { return getOperand(0); }
+  explicit CondBranchOp(IRContext &context, Value *cond, BasicBlock *thenBlock,
+                        BasicBlock *elseBlock);
+  Value *getCondition() const { return getOperand(0); }
+  BasicBlock *getThenBB() const { return thenBB; }
+  BasicBlock *getElseBB() const { return elseBB; }
+
+  std::string_view getOpName() const override { return "br"; }
+
+private:
+  BasicBlock *thenBB;
+  BasicBlock *elseBB;
+};
+
+class JumpOp : public BranchOp {
+public:
+  explicit JumpOp(IRContext &context, BasicBlock *target);
+  BasicBlock *getTargetBB() const { return targetBB; }
+
   std::string_view getOpName() const override { return "jump"; }
+
+private:
+  BasicBlock *targetBB;
 };
 
 } // namespace ir

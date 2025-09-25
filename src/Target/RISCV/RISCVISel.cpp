@@ -49,7 +49,7 @@ RISCVISel::selectInstructions(const ir::Function *func) {
         // AllocOp does not generate any instructions directly.
         // Stack slot is already allocated in the first pass.
         (void)alloc; // Suppress unused variable warning.
-      } else if (auto *branch = dynamic_cast<ir::BranchOp *>(op)) {
+      } else if (auto *branch = dynamic_cast<ir::CondBranchOp *>(op)) {
         instrInfo.lowerBranchOp(branch, mcInsts);
       } else if (auto *jump = dynamic_cast<ir::JumpOp *>(op)) {
         instrInfo.lowerJumpOp(jump, mcInsts);
