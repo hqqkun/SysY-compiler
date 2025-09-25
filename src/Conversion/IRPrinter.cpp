@@ -40,13 +40,12 @@ void IRPrinter::printOperation(ir::Operation *op, OpResultMap &resultMap) {
   os << "\t"; // Create indent.
 
   // Handle different operation types for printing
-  // AllocOp is handled specially to print variable names.
   if (auto *allocOp = dynamic_cast<ir::AllocOp *>(op)) {
-    allocNames[allocOp->getResult()] = allocOp->getVarName();
-    os << "@" << allocOp->getVarName() << " = ";
-    os << allocOp->getOpName() << " ";
-    printType(allocOp->getAllocType());
-    os << std::endl;
+    printAllocOperation(allocOp, resultMap);
+    return;
+  }
+  if (auto *brOp = dynamic_cast<ir::BranchOp *>(op)) {
+    printBranchOperation(brOp, resultMap);
     return;
   }
 
@@ -72,6 +71,34 @@ void IRPrinter::printOperation(ir::Operation *op, OpResultMap &resultMap) {
   os << std::endl;
 }
 
+/// This is a specialized function to print BranchOp.
+void IRPrinter::printBranchOperation(ir::BranchOp *brOp,
+                                     OpResultMap &resultMap) {
+  assert(brOp && "BranchOp cannot be null");
+  os << brOp->getOpName() << " ";
+  if (auto *condBr = dynamic_cast<ir::CondBranchOp *>(brOp)) {
+    printOperand(condBr->getCondition(), resultMap);
+    os << ", %" << condBr->getThenBB()->getName() << ", %"
+       << condBr->getElseBB()->getName();
+  } else if (auto *jumpOp = dynamic_cast<ir::JumpOp *>(brOp)) {
+    os << "%" << jumpOp->getTargetBB()->getName();
+  } else {
+    assert(false && "Unknown BranchOp type");
+  }
+  os << std::endl;
+}
+
+/// Specialized function to print AllocOp with variable names.
+void IRPrinter::printAllocOperation(ir::AllocOp *allocOp,
+                                    OpResultMap &resultMap) {
+  assert(allocOp && "AllocOp cannot be null");
+  allocNames[allocOp->getResult()] = allocOp->getVarName();
+  os << "@" << allocOp->getVarName() << " = ";
+  os << allocOp->getOpName() << " ";
+  printType(allocOp->getAllocType());
+  os << std::endl;
+}
+
 void IRPrinter::printOperand(ir::Value *operand, OpResultMap &resultMap) {
   assert(operand && "Operand cannot be null");
   if (operand->isInteger()) {
@@ -90,9 +117,6 @@ void IRPrinter::printOperand(ir::Value *operand, OpResultMap &resultMap) {
   } else if (operand->isFuncArg()) {
     ir::FuncArg *funcArg = static_cast<ir::FuncArg *>(operand);
     os << "arg" << funcArg->getIndex();
-  } else if (operand->isJumpArg()) {
-    ir::JumpArg *jumpArg = static_cast<ir::JumpArg *>(operand);
-    os << "%" << jumpArg->getTargetBB()->getName();
   } else {
     assert(false && "Unknown operand type");
   }

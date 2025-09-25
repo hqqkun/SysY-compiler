@@ -144,31 +144,24 @@ StoreOp::StoreOp(IRContext &context, Value *val, Value *ptr) {
   result = nullptr;
 }
 
-BranchOp::BranchOp(IRContext &context, Value *cond, Value *thenArg,
-                   Value *elseArg) {
+CondBranchOp::CondBranchOp(IRContext &context, Value *cond,
+                           BasicBlock *thenBlock, BasicBlock *elseBlock) {
   assert(cond && "BranchOp condition cannot be null");
-  assert(thenArg && "BranchOp then argument cannot be null");
-  assert(elseArg && "BranchOp else argument cannot be null");
-  // Check that thenArg and elseArg are `JumpArg`.
-  assert(thenArg->isJumpArg() && "BranchOp then argument must be a JumpArg");
-  assert(elseArg->isJumpArg() && "BranchOp else argument must be a JumpArg");
+  assert(thenBlock && "BranchOp then block cannot be null");
+  assert(elseBlock && "BranchOp else block cannot be null");
   assert(cond->getType()->isInteger() &&
          "BranchOp condition must be an integer type");
   operands.emplace_back(cond);
-  operands.emplace_back(thenArg);
-  operands.emplace_back(elseArg);
   cond->addUser(this);
-  thenArg->addUser(this);
-  elseArg->addUser(this);
+  thenBB = thenBlock;
+  elseBB = elseBlock;
   result = nullptr;
   // BranchOp has no result type.
 }
 
-JumpOp::JumpOp(IRContext &context, Value *targetArg) {
-  assert(targetArg && "JumpOp target argument cannot be null");
-  assert(targetArg->isJumpArg() && "JumpOp target argument must be a JumpArg");
-  operands.emplace_back(targetArg);
-  targetArg->addUser(this);
+JumpOp::JumpOp(IRContext &context, BasicBlock *target) {
+  assert(target && "JumpOp target block cannot be null");
+  targetBB = target;
   result = nullptr;
   // JumpOp has no result type.
 }

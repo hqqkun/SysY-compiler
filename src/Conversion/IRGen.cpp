@@ -244,15 +244,13 @@ void IRGen::convertIfStmt(ir::IRBuilder &builder, ast::IfStmtAST *ifStmtAST) {
       ir::BasicBlock::create(context, "else_" + std::to_string(nextID));
   ir::BasicBlock *endBlock =
       ir::BasicBlock::create(context, "end_" + std::to_string(nextID));
-  ir::JumpArg *thenArg = ir::JumpArg::get(context, thenBlock);
-  ir::JumpArg *elseArg = ir::JumpArg::get(context, elseBlock);
-  builder.create<ir::BranchOp>(cond, thenArg, elseArg);
+  builder.create<ir::CondBranchOp>(cond, thenBlock, elseBlock);
   builder.commitBlock();
 
   // 2. Fill in the `then` block.
   builder.setInsertPoint(thenBlock);
   convertStmt(builder, ifStmtAST->thenStmt.get());
-  builder.create<ir::JumpOp>(ir::JumpArg::get(context, endBlock));
+  builder.create<ir::JumpOp>(endBlock);
   builder.commitBlock();
 
   // 3. Fill in the `else` block if exists, otherwise create a jump to the end.
@@ -260,7 +258,7 @@ void IRGen::convertIfStmt(ir::IRBuilder &builder, ast::IfStmtAST *ifStmtAST) {
   if (ifStmtAST->elseStmt) {
     convertStmt(builder, ifStmtAST->elseStmt.get());
   }
-  builder.create<ir::JumpOp>(ir::JumpArg::get(context, endBlock));
+  builder.create<ir::JumpOp>(endBlock);
   builder.commitBlock();
 
   // 4. Set the insertion point to the end block.
