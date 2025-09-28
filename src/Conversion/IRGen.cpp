@@ -262,9 +262,7 @@ void IRGen::convertReturnStmt(ir::IRBuilder &builder,
   // Commit the current block and create an unreachable block to prevent
   // fall-through.
   builder.commitBlock();
-  ir::BasicBlock *unreach = ir::BasicBlock::create(
-      context, "unreachable_" + std::to_string(getNextBlockId()));
-  builder.setInsertPoint(unreach);
+  createUnreachableBlock(builder);
 }
 
 void IRGen::convertAssignStmt(ir::IRBuilder &builder,
@@ -362,9 +360,7 @@ void IRGen::convertBreakStmt(ir::IRBuilder &builder,
   builder.commitBlock();
 
   // Create an unreachable block to prevent fall-through.
-  ir::BasicBlock *unreach = ir::BasicBlock::create(
-      context, "unreachable_" + std::to_string(getNextBlockId()));
-  builder.setInsertPoint(unreach);
+  createUnreachableBlock(builder);
 }
 
 void IRGen::convertContinueStmt(ir::IRBuilder &builder,
@@ -378,9 +374,7 @@ void IRGen::convertContinueStmt(ir::IRBuilder &builder,
   builder.commitBlock();
 
   // Create an unreachable block to prevent fall-through.
-  ir::BasicBlock *unreach = ir::BasicBlock::create(
-      context, "unreachable_" + std::to_string(getNextBlockId()));
-  builder.setInsertPoint(unreach);
+  createUnreachableBlock(builder);
 }
 
 /// Convert declarations and definitions.
@@ -468,6 +462,12 @@ void IRGen::convertBlock(ir::IRBuilder &builder, BlockAST *blockAST) {
   }
   // Exit the scope after finishing the block.
   varTables.exitScope();
+}
+
+void IRGen::createUnreachableBlock(ir::IRBuilder &builder) {
+  ir::BasicBlock *unreach = ir::BasicBlock::create(
+      context, "unreachable_" + std::to_string(getNextBlockId()));
+  builder.setInsertPoint(unreach);
 }
 
 ir::Function *IRGen::generate(std::unique_ptr<ast::BaseAST> &ast) {

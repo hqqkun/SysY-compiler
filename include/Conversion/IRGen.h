@@ -74,6 +74,10 @@ private:
 
   ir::Value *convertLval(ir::IRBuilder &builder, ast::LValAST *lvalAST);
 
+  /// Create an unreachable block to prevent fall-through after a jump or
+  /// return.
+  void createUnreachableBlock(ir::IRBuilder &builder);
+
   /// Utility functions for block id management.
   uint64_t getNextBlockId() { return nextBlockId++; }
   uint64_t getNextTempId() { return nextTempId++; }
