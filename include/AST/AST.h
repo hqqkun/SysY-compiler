@@ -188,6 +188,16 @@ public:
       : cond(std::move(c)), thenStmt(std::move(t)), elseStmt(std::move(e)) {}
 };
 
+class WhileStmtAST : public StmtAST {
+public:
+  std::unique_ptr<ExprAST> cond;
+  std::unique_ptr<StmtAST> body;
+  void dump() const override;
+
+  WhileStmtAST(std::unique_ptr<ExprAST> c, std::unique_ptr<StmtAST> b)
+      : cond(std::move(c)), body(std::move(b)) {}
+};
+
 /// Expression
 class ExprAST : public BaseAST {
 public:

@@ -5,6 +5,7 @@
 #include "AST/AST.h"
 #include "AST/Ops.h"
 #include "Conversion/IRGen.h"
+#include "IR/BasicBlock.h"
 #include "IR/Function.h"
 #include "IR/IRBuilder.h"
 #include "IR/Operation.h"
@@ -234,6 +235,8 @@ void IRGen::convertStmt(ir::IRBuilder &builder, StmtAST *stmtAST) {
     convertBlock(builder, blockStmtAST->block.get());
   } else if (auto *ifStmtAST = dynamic_cast<IfStmtAST *>(stmtAST)) {
     convertIfStmt(builder, ifStmtAST);
+  } else if (auto *whileStmtAST = dynamic_cast<WhileStmtAST *>(stmtAST)) {
+    convertWhileStmt(builder, whileStmtAST);
   } else {
     assert(false && "Unknown statement type");
   }
@@ -307,6 +310,37 @@ void IRGen::convertIfStmt(ir::IRBuilder &builder, ast::IfStmtAST *ifStmtAST) {
 
   // 4. Set the insertion point to the end block.
   builder.setInsertPoint(endBlock);
+}
+
+void IRGen::convertWhileStmt(ir::IRBuilder &builder,
+                             ast::WhileStmtAST *whileStmtAST) {
+  assert(whileStmtAST && "WhileStmtAST cannot be null");
+  uint64_t nextID = getNextBlockId();
+  ir::BasicBlock *entry =
+      ir::BasicBlock::create(context, "while_entry_" + std::to_string(nextID));
+  ir::BasicBlock *body =
+      ir::BasicBlock::create(context, "while_body_" + std::to_string(nextID));
+  ir::BasicBlock *end =
+      ir::BasicBlock::create(context, "while_end_" + std::to_string(nextID));
+
+  // Jump to the entry block.
+  builder.create<ir::JumpOp>(entry);
+  builder.commitBlock();
+
+  // Fill in the entry block.
+  builder.setInsertPoint(entry);
+  ir::Value *cond = dispatchAndConvert(builder, whileStmtAST->cond.get());
+  builder.create<ir::CondBranchOp>(cond, body, end);
+  builder.commitBlock();
+
+  // Fill in the body block.
+  builder.setInsertPoint(body);
+  convertStmt(builder, whileStmtAST->body.get());
+  builder.create<ir::JumpOp>(entry);
+  builder.commitBlock();
+
+  // Set the insertion point to the end block.
+  builder.setInsertPoint(end);
 }
 
 /// Convert declarations and definitions.
