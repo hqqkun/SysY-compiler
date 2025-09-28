@@ -10,6 +10,14 @@
 
 namespace conversion {
 
+static void printAllocPrefix(std::ostream &os, bool isUserVariable) {
+  if (isUserVariable) {
+    os << "@";
+  } else {
+    os << "%";
+  }
+}
+
 void IRPrinter::printFunction(ir::Function *func) {
   assert(func && "Function cannot be null");
 
@@ -92,9 +100,19 @@ void IRPrinter::printBranchOperation(ir::BranchOp *brOp,
 void IRPrinter::printAllocOperation(ir::AllocOp *allocOp,
                                     OpResultMap &resultMap) {
   assert(allocOp && "AllocOp cannot be null");
-  allocNames[allocOp->getResult()] = allocOp->getVarName();
-  os << "@" << allocOp->getVarName() << " = ";
-  os << allocOp->getOpName() << " ";
+  bool isUserVar = allocOp->isUserVariable();
+  printAllocPrefix(os, isUserVar);
+  if (isUserVar) {
+    // @varName = alloc type
+    allocNames[allocOp->getResult()] = allocOp->getVarName();
+    os << allocOp->getVarName();
+  } else {
+    // For non-user variables, assign a unique name using the result ID.
+    // %id = alloc type
+    uint64_t id = resultMap.insert(allocOp->getResult());
+    os << id;
+  }
+  os << " = " << allocOp->getOpName() << " ";
   printType(allocOp->getAllocType());
   os << std::endl;
 }

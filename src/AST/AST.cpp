@@ -274,4 +274,6 @@ void ConstExpAST::dump() const {
   std::cout << " }";
 }
 
+bool isLogicalOp(Op op) { return op == Op::LAND || op == Op::LOR; }
+
 } // namespace ast

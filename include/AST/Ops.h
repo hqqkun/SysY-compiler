@@ -39,6 +39,8 @@ inline std::ostream &operator<<(std::ostream &os, const Op &op) {
   return os;
 }
 
+bool isLogicalOp(Op op);
+
 } // namespace ast
 
 #endif // __AST_OPS_H__

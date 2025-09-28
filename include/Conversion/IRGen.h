@@ -54,6 +54,8 @@ private:
                               ast::UnaryExpAST *unaryExprAST);
   ir::Value *convertBinaryExp(ir::IRBuilder &builder,
                               ast::BinaryExpAST *binaryExpAST);
+  ir::Value *convertLogicalBinaryExp(ir::IRBuilder &builder,
+                                     ast::BinaryExpAST *binaryExpAST);
   ir::Value *convertInitValExp(ir::IRBuilder &builder,
                                ast::InitValAST *initValAST);
   ir::Value *dispatchAndConvert(ir::IRBuilder &builder, ast::BaseAST *ast);
