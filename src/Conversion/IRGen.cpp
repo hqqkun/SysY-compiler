@@ -99,6 +99,10 @@ ir::Value *IRGen::convertBinaryExp(ir::IRBuilder &builder,
   if (binaryExpAST->isSingle()) {
     return dispatchAndConvert(builder, binaryExpAST->singleExp.get());
   } else if (binaryExpAST->isComposite()) {
+    if (isLogicalOp(binaryExpAST->binOp)) {
+      return convertLogicalBinaryExp(builder, binaryExpAST);
+    }
+
     auto &[lhs_ast, rhs_ast] = binaryExpAST->compositeExp;
     ir::Value *lhs = dispatchAndConvert(builder, lhs_ast.get());
     ir::Value *rhs = dispatchAndConvert(builder, rhs_ast.get());
@@ -125,18 +129,6 @@ ir::Value *IRGen::convertBinaryExp(ir::IRBuilder &builder,
         return builder.create<ir::EqOp>(lhs, rhs)->getResult();
       case Op::NEQ:
         return builder.create<ir::NeqOp>(lhs, rhs)->getResult();
-      case Op::LAND: {
-        ir::Integer *zero = ir::Integer::get(builder.getContext(), 0, 32);
-        ir::Value *lhsBool = builder.create<ir::NeqOp>(lhs, zero)->getResult();
-        ir::Value *rhsBool = builder.create<ir::NeqOp>(rhs, zero)->getResult();
-        return builder.create<ir::BitAndOp>(lhsBool, rhsBool)->getResult();
-      }
-      case Op::LOR: {
-        ir::Integer *zero = ir::Integer::get(builder.getContext(), 0, 32);
-        ir::Value *lhsBool = builder.create<ir::NeqOp>(lhs, zero)->getResult();
-        ir::Value *rhsBool = builder.create<ir::NeqOp>(rhs, zero)->getResult();
-        return builder.create<ir::BitOrOp>(lhsBool, rhsBool)->getResult();
-      }
       default:
         assert(false && "Unknown binary operator");
         return nullptr;
@@ -144,6 +136,58 @@ ir::Value *IRGen::convertBinaryExp(ir::IRBuilder &builder,
   } else {
     assert(false && "Unknown expression type");
   }
+}
+
+ir::Value *IRGen::convertLogicalBinaryExp(ir::IRBuilder &builder,
+                                          ast::BinaryExpAST *binaryExpAST) {
+  assert(binaryExpAST && "Binary expression AST cannot be null");
+  auto op = binaryExpAST->binOp;
+
+  // Compute lhs first.
+  ir::Value *lhs =
+      dispatchAndConvert(builder, binaryExpAST->compositeExp.first.get());
+  ir::Integer *zero = ir::Integer::get(builder.getContext(), 0, 32);
+  ir::IntegerType *intType = ir::IntegerType::get(context, 32);
+
+  const std::string prefix = (op == Op::LAND) ? "land" : "lor";
+  auto createCond = [&]() -> ir::Value * {
+    return (op == Op::LAND) ? builder.create<ir::EqOp>(lhs, zero)->getResult()
+                            : builder.create<ir::NeqOp>(lhs, zero)->getResult();
+  };
+  ir::Value *earlyValue = (op == Op::LAND) ? ir::Integer::get(context, 0)
+                                           : ir::Integer::get(context, 1);
+  // The name here is irrelevant since it's a temporary variable.
+  // IRPrinter will take care of printing it properly.
+  ir::Value *result =
+      builder.create<ir::AllocOp>("", intType, false)->getResult();
+
+  uint64_t nextID = getNextBlockId();
+  ir::BasicBlock *early = ir::BasicBlock::create(
+      context, prefix + "_early_" + std::to_string(nextID));
+  ir::BasicBlock *cont = ir::BasicBlock::create(
+      context, prefix + "_cont_" + std::to_string(nextID));
+  ir::BasicBlock *end = ir::BasicBlock::create(
+      context, prefix + "_end_" + std::to_string(nextID));
+
+  builder.create<ir::CondBranchOp>(createCond(), early, cont);
+  builder.commitBlock();
+
+  // Fill in the `early`, `cont` and `end` blocks.
+  builder.setInsertPoint(early);
+  builder.create<ir::StoreOp>(earlyValue, result);
+  builder.create<ir::JumpOp>(end);
+  builder.commitBlock();
+
+  builder.setInsertPoint(cont);
+  ir::Value *rhs =
+      dispatchAndConvert(builder, binaryExpAST->compositeExp.second.get());
+  ir::Value *rhsBool = builder.create<ir::NeqOp>(rhs, zero)->getResult();
+  builder.create<ir::StoreOp>(rhsBool, result);
+  builder.create<ir::JumpOp>(end);
+  builder.commitBlock();
+
+  builder.setInsertPoint(end);
+  return builder.create<ir::LoadOp>(result)->getResult();
 }
 
 ir::Value *IRGen::convertLval(ir::IRBuilder &builder, ast::LValAST *lvalAST) {
@@ -319,7 +363,7 @@ void IRGen::convertVarDef(ir::IRBuilder &builder, ast::VarDefAST *varDefAST,
   std::string varName = varDefAST->var + "_" + std::to_string(getNextTempId());
   ir::Type *allocType = ASTType2IRType(context, bType);
   ir::Value *alloc =
-      builder.create<ir::AllocOp>(varName, allocType, 1)->getResult();
+      builder.create<ir::AllocOp>(varName, allocType, true)->getResult();
   varTables.setValue(varDefAST->var, alloc);
 
   // 2. If there is an initializer, evaluate it and store the value.

@@ -111,8 +111,9 @@ ReturnOp::ReturnOp(IRContext &context, Value *retVal) {
 }
 
 AllocOp::AllocOp(IRContext &context, const std::string &name, Type *allocType,
-                 size_t size)
-    : allocSize(size), varName(name), elemType(allocType) {
+                 bool isUserVar, size_t size)
+    : userVariable(isUserVar), allocSize(size), varName(name),
+      elemType(allocType) {
   assert(allocType && "AllocOp type cannot be null");
   resultType = PointerType::get(context, allocType);
   result = context.create<OpResult>(this);

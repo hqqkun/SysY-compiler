@@ -135,12 +135,16 @@ public:
 class AllocOp : public Operation {
 public:
   explicit AllocOp(IRContext &context, const std::string &var, Type *allocType,
-                   size_t size = 1);
+                   bool isUserVar = true, size_t size = 1);
   std::string_view getOpName() const override { return "alloc"; }
   const std::string &getVarName() const { return varName; }
   Type *getAllocType() const { return elemType; }
+  bool isUserVariable() const { return userVariable; }
 
 private:
+  /// Indicates whether this allocation is for a user-defined variable.
+  /// If false, it may be for a temporary or internal use.
+  bool userVariable;
   size_t allocSize;
   std::string varName;
   Type *elemType;
