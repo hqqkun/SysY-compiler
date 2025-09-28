@@ -14,6 +14,11 @@
 
 namespace conversion {
 
+/// A pair representing the loop's (entry block, exit block).
+using LoopPair = std::pair<ir::BasicBlock *, ir::BasicBlock *>;
+/// A stack to manage nested loops.
+using LoopStack = std::list<LoopPair>;
+
 class IRGen {
 public:
   explicit IRGen(ir::IRContext &ctx)
@@ -26,6 +31,7 @@ private:
   interpreter::Interpreter interpreter;
   uint64_t nextBlockId;
   uint64_t nextTempId;
+  LoopStack loopStack;
 
   void convertBlock(ir::IRBuilder &builder, ast::BlockAST *blockAST);
 
@@ -38,6 +44,10 @@ private:
   void convertIfStmt(ir::IRBuilder &builder, ast::IfStmtAST *ifStmtAST);
   void convertWhileStmt(ir::IRBuilder &builder,
                         ast::WhileStmtAST *whileStmtAST);
+  void convertBreakStmt(ir::IRBuilder &builder,
+                        ast::BreakStmtAST *breakStmtAST);
+  void convertContinueStmt(ir::IRBuilder &builder,
+                           ast::ContinueStmtAST *continueStmtAST);
   ir::FunctionType *convertFunctionType(ast::FuncTypeAST *funcTypeAST);
 
   /// Convert declarations and definitions.

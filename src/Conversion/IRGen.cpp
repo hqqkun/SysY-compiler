@@ -237,6 +237,10 @@ void IRGen::convertStmt(ir::IRBuilder &builder, StmtAST *stmtAST) {
     convertIfStmt(builder, ifStmtAST);
   } else if (auto *whileStmtAST = dynamic_cast<WhileStmtAST *>(stmtAST)) {
     convertWhileStmt(builder, whileStmtAST);
+  } else if (auto *breakStmtAST = dynamic_cast<BreakStmtAST *>(stmtAST)) {
+    convertBreakStmt(builder, breakStmtAST);
+  } else if (auto *continueStmtAST = dynamic_cast<ContinueStmtAST *>(stmtAST)) {
+    convertContinueStmt(builder, continueStmtAST);
   } else {
     assert(false && "Unknown statement type");
   }
@@ -335,12 +339,48 @@ void IRGen::convertWhileStmt(ir::IRBuilder &builder,
 
   // Fill in the body block.
   builder.setInsertPoint(body);
+  // Push the loop pair onto the stack.
+  loopStack.push_front({entry, end});
   convertStmt(builder, whileStmtAST->body.get());
   builder.create<ir::JumpOp>(entry);
   builder.commitBlock();
 
   // Set the insertion point to the end block.
   builder.setInsertPoint(end);
+  // Pop the loop pair from the stack.
+  loopStack.pop_front();
+}
+
+void IRGen::convertBreakStmt(ir::IRBuilder &builder,
+                             ast::BreakStmtAST *breakStmtAST) {
+  assert(breakStmtAST && "BreakStmtAST cannot be null");
+  assert(!loopStack.empty() && "Break statement not within a loop");
+
+  // Jump to the exit block of the innermost loop.
+  ir::BasicBlock *exitBlock = loopStack.front().second;
+  builder.create<ir::JumpOp>(exitBlock);
+  builder.commitBlock();
+
+  // Create an unreachable block to prevent fall-through.
+  ir::BasicBlock *unreach = ir::BasicBlock::create(
+      context, "unreachable_" + std::to_string(getNextBlockId()));
+  builder.setInsertPoint(unreach);
+}
+
+void IRGen::convertContinueStmt(ir::IRBuilder &builder,
+                                ast::ContinueStmtAST *continueStmtAST) {
+  assert(continueStmtAST && "ContinueStmtAST cannot be null");
+  assert(!loopStack.empty() && "Continue statement not within a loop");
+
+  // Jump to the entry block of the innermost loop.
+  ir::BasicBlock *entryBlock = loopStack.front().first;
+  builder.create<ir::JumpOp>(entryBlock);
+  builder.commitBlock();
+
+  // Create an unreachable block to prevent fall-through.
+  ir::BasicBlock *unreach = ir::BasicBlock::create(
+      context, "unreachable_" + std::to_string(getNextBlockId()));
+  builder.setInsertPoint(unreach);
 }
 
 /// Convert declarations and definitions.
