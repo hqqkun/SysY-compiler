@@ -36,6 +36,8 @@ private:
   void convertAssignStmt(ir::IRBuilder &builder,
                          ast::AssignStmtAST *assignStmtAST);
   void convertIfStmt(ir::IRBuilder &builder, ast::IfStmtAST *ifStmtAST);
+  void convertWhileStmt(ir::IRBuilder &builder,
+                        ast::WhileStmtAST *whileStmtAST);
   ir::FunctionType *convertFunctionType(ast::FuncTypeAST *funcTypeAST);
 
   /// Convert declarations and definitions.

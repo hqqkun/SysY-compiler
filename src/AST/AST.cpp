@@ -213,6 +213,18 @@ void IfStmtAST::dump() const {
   std::cout << " }";
 }
 
+void WhileStmtAST::dump() const {
+  std::cout << "WhileStmtAST { ";
+  if (cond) {
+    cond->dump();
+  }
+  if (body) {
+    std::cout << ", ";
+    body->dump();
+  }
+  std::cout << " }";
+}
+
 /// Expression dumping
 void ExprAST::dump() const {
   std::cout << "ExprAST { ";
