@@ -150,10 +150,6 @@ ir::Value *IRGen::convertLogicalBinaryExp(ir::IRBuilder &builder,
   ir::IntegerType *intType = ir::IntegerType::get(context, 32);
 
   const std::string prefix = (op == Op::LAND) ? "land" : "lor";
-  auto createCond = [&]() -> ir::Value * {
-    return (op == Op::LAND) ? builder.create<ir::EqOp>(lhs, zero)->getResult()
-                            : builder.create<ir::NeqOp>(lhs, zero)->getResult();
-  };
   ir::Value *earlyValue = (op == Op::LAND) ? ir::Integer::get(context, 0)
                                            : ir::Integer::get(context, 1);
   // The name here is irrelevant since it's a temporary variable.
@@ -169,7 +165,11 @@ ir::Value *IRGen::convertLogicalBinaryExp(ir::IRBuilder &builder,
   ir::BasicBlock *end = ir::BasicBlock::create(
       context, prefix + "_end_" + std::to_string(nextID));
 
-  builder.create<ir::CondBranchOp>(createCond(), early, cont);
+  if (op == Op::LAND) {
+    builder.create<ir::CondBranchOp>(lhs, cont, early);
+  } else {
+    builder.create<ir::CondBranchOp>(lhs, early, cont);
+  }
   builder.commitBlock();
 
   // Fill in the `early`, `cont` and `end` blocks.
