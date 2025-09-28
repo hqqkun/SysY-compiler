@@ -198,6 +198,16 @@ public:
       : cond(std::move(c)), body(std::move(b)) {}
 };
 
+class BreakStmtAST : public StmtAST {
+public:
+  void dump() const override;
+};
+
+class ContinueStmtAST : public StmtAST {
+public:
+  void dump() const override;
+};
+
 /// Expression
 class ExprAST : public BaseAST {
 public:

@@ -225,6 +225,10 @@ void WhileStmtAST::dump() const {
   std::cout << " }";
 }
 
+void BreakStmtAST::dump() const { std::cout << "BreakStmtAST { }"; }
+
+void ContinueStmtAST::dump() const { std::cout << "ContinueStmtAST { }"; }
+
 /// Expression dumping
 void ExprAST::dump() const {
   std::cout << "ExprAST { ";
