@@ -16,7 +16,8 @@ VoidType *VoidType::get(IRContext &context) {
   return context.create<VoidType>();
 }
 
-FunctionType *FunctionType::get(IRContext &context, Type *returnType,
+FunctionType *FunctionType::get(IRContext &context,
+                                std::optional<Type *> returnType,
                                 const std::vector<Type *> &paramTypes) {
   return context.create<FunctionType>(returnType, paramTypes);
 }

@@ -46,18 +46,18 @@ int main(int argc, const char *argv[]) {
 
   ir::IRContext irContext;
   conversion::IRGen irGen(irContext);
-  ir::Function *func = irGen.generate(ast);
-  if (!func) {
+  ir::Module *module = irGen.generate(ast);
+  if (!module) {
     std::cerr << "Failed to convert AST to IR." << std::endl;
     return -1;
   }
 
   if (mode == kIR) {
     conversion::IRPrinter printer(ofs);
-    printer.printFunction(func);
+    printer.printModule(module);
   } else if (mode == kRISCV) {
     target::riscv::RISCVTargetMachine tm(ofs);
-    tm.codeGen(func);
+    tm.codeGen(module);
   } else {
     std::cerr << "Unknown mode: " << mode << std::endl;
     return -1;

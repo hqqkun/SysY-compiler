@@ -29,13 +29,16 @@ void yyerror(std::unique_ptr<ast::BaseAST>& ast, const char* s);
   ast::BlockAST* block_val;
   std::vector<ast::ASTPtr>* astVec;
   std::vector<ast::BlockItemPtr>* blockItemVec;
+  std::vector<ast::FuncFParamPtr>* funcFParamVec;
+  std::vector<ast::FuncRParamPtr>* funcRParamVec;
+  ast::FuncFParamAST* funcFParam;
   ast::BlockItemAST* blockItem;
   ast::Op op;
   ast::Type type;
 }
 
 
-%token INT IF ELSE RETURN CONST WHILE BREAK CONTINUE T_MUL T_DIV T_MOD T_ADD T_SUB T_BANG T_LE T_GE T_LT T_GT T_EQ T_NEQ T_AND T_OR T_ASSIGN
+%token INT IF ELSE RETURN CONST WHILE BREAK CONTINUE VOID T_MUL T_DIV T_MOD T_ADD T_SUB T_BANG T_LE T_GE T_LT T_GT T_EQ T_NEQ T_AND T_OR T_ASSIGN
 %token <int_val> INT_CONST
 %token <str_val> IDENT
 
@@ -45,7 +48,11 @@ void yyerror(std::unique_ptr<ast::BaseAST>& ast, const char* s);
 %type <ast_val> EXP PrimaryExp UnaryExp MulExp AddExp RelExp EqExp LAndExp LOrExp ConstExp LVal
 %type <astVec> ConstDefList
 %type <astVec> VarDefList
+%type <astVec> FuncDefList
 %type <blockItemVec> BlockItemList
+%type <funcFParamVec> FuncFParamList
+%type <funcFParam> FuncFParam
+%type <funcRParamVec> FuncRParamList
 %type <blockItem> BlockItem
 %type <type> BType
 %type <int_val> Number
@@ -57,21 +64,40 @@ void yyerror(std::unique_ptr<ast::BaseAST>& ast, const char* s);
 
 // Compilation unit
 CompUnit
-    : FuncDef {
-      auto comp_unit = std::make_unique<ast::CompUnitAST>();
-      comp_unit->funcDef = std::unique_ptr<ast::BaseAST>($1);
+    : FuncDefList {
+      auto vec = std::unique_ptr<std::vector<ast::ASTPtr>>($1);
+      auto comp_unit = std::make_unique<ast::CompUnitAST>(std::move(vec));
       ast = std::move(comp_unit);
     }
     ;
 
-// FuncDef ::= FuncType IDENT '(' ')' Block;
+FuncDefList
+    : FuncDef {
+      auto vec = new std::vector<ast::ASTPtr>();
+      vec->emplace_back($1);
+      $$ = vec;
+    }
+    | FuncDefList FuncDef {
+      auto vec = $1;
+      vec->emplace_back($2);
+      $$ = vec;
+    }
+    ;
+
+// FuncDef ::= FuncType IDENT '(' [FuncFParamList] ')' Block;
 FuncDef
     : FuncType IDENT '(' ')' Block {
-      auto ast = new ast::FuncDefAST();
-      ast->funcType = std::unique_ptr<ast::BaseAST>($1);
-      ast->ident = *std::unique_ptr<std::string>($2);
-      ast->block = std::unique_ptr<ast::BaseAST>($5);
-      $$ = ast;
+      auto funcType = std::unique_ptr<ast::BaseAST>($1);
+      auto ident = *std::unique_ptr<std::string>($2);
+      auto block = std::unique_ptr<ast::BaseAST>($5);
+      $$ = new ast::FuncDefAST(std::move(funcType), ident, std::move(block));
+    }
+    | FuncType IDENT '(' FuncFParamList ')' Block {
+      auto funcType = std::unique_ptr<ast::BaseAST>($1);
+      auto ident = *std::unique_ptr<std::string>($2);
+      auto params = std::unique_ptr<std::vector<ast::FuncFParamPtr>>($4);
+      auto block = std::unique_ptr<ast::BaseAST>($6);
+      $$ = new ast::FuncDefAST(std::move(funcType), ident, std::move(params), std::move(block));
     }
     ;
 
@@ -81,7 +107,32 @@ FuncType
       ast->type = ast::Type::INT;
       $$ = ast;
     }
+    | VOID {
+      auto ast = new ast::FuncTypeAST();
+      ast->type = ast::Type::VOID;
+      $$ = ast;
+    }
     ;
+
+FuncFParamList
+    : FuncFParam {
+      auto vec = new std::vector<ast::FuncFParamPtr>();
+      vec->emplace_back($1);
+      $$ = vec;
+    }
+    | FuncFParamList ',' FuncFParam {
+      auto vec = $1;
+      vec->emplace_back($3);
+      $$ = vec;
+    }
+    ;
+
+FuncFParam
+    : BType IDENT {
+      auto type = $1;
+      auto ident = *std::unique_ptr<std::string>($2);
+      $$ = new ast::FuncFParamAST(type, ident);
+    }
 
 BType
     : INT {
@@ -293,7 +344,30 @@ UnaryExp
       auto exp = std::unique_ptr<ast::BaseAST>($2);
       $$ = new ast::UnaryExpAST($1, std::move(exp));
     }
+    | IDENT '(' ')' {
+      auto ident = *std::unique_ptr<std::string>($1);
+      auto funcCall = std::make_unique<ast::FuncCallAST>(ident);
+      $$ = new ast::UnaryExpAST(std::move(funcCall));
+    }
+    | IDENT '(' FuncRParamList ')' {
+      auto ident = *std::unique_ptr<std::string>($1);
+      auto params = std::unique_ptr<std::vector<ast::FuncRParamPtr>>($3);
+      auto funcCall = std::make_unique<ast::FuncCallAST>(ident, std::move(params));
+      $$ = new ast::UnaryExpAST(std::move(funcCall));
+    }
     ;
+
+FuncRParamList
+    : EXP {
+      auto vec = new std::vector<ast::FuncRParamPtr>();
+      vec->emplace_back(static_cast<ast::ExprAST*>($1));
+      $$ = vec;
+    }
+    | FuncRParamList ',' EXP {
+      auto vec = $1;
+      vec->emplace_back(static_cast<ast::ExprAST*>($3));
+      $$ = vec;
+    }
 
 MulExp
     : UnaryExp {

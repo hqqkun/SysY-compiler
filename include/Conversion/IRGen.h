@@ -6,6 +6,7 @@
 #include "IR/Function.h"
 #include "IR/IRBuilder.h"
 #include "IR/IRContext.h"
+#include "IR/Module.h"
 #include "IR/Operation.h"
 #include "IR/Type.h"
 #include "IR/Value.h"
@@ -23,7 +24,7 @@ class IRGen {
 public:
   explicit IRGen(ir::IRContext &ctx)
       : context(ctx), interpreter(varTables), nextBlockId(0), nextTempId(0) {}
-  ir::Function *generate(std::unique_ptr<ast::BaseAST> &ast);
+  ir::Module *generate(std::unique_ptr<ast::BaseAST> &ast);
 
 private:
   ir::IRContext &context;
@@ -32,6 +33,13 @@ private:
   uint64_t nextBlockId;
   uint64_t nextTempId;
   LoopStack loopStack;
+
+  /// Convert function definition.
+  ir::Function *convertFuncDef(ast::FuncDefAST *funcDefAST);
+  ir::FunctionType *
+  convertFunctionType(ast::Type retType,
+                      const std::vector<ast::Type> &paramTypes);
+  void prepareFunctionArgs(ir::IRBuilder &builder, ir::Function *function);
 
   void convertBlock(ir::IRBuilder &builder, ast::BlockAST *blockAST);
 
@@ -48,7 +56,6 @@ private:
                         ast::BreakStmtAST *breakStmtAST);
   void convertContinueStmt(ir::IRBuilder &builder,
                            ast::ContinueStmtAST *continueStmtAST);
-  ir::FunctionType *convertFunctionType(ast::FuncTypeAST *funcTypeAST);
 
   /// Convert declarations and definitions.
   void convertDeclaration(ir::IRBuilder &builder, ast::DeclAST *declAST);
@@ -70,9 +77,10 @@ private:
                                      ast::BinaryExpAST *binaryExpAST);
   ir::Value *convertInitValExp(ir::IRBuilder &builder,
                                ast::InitValAST *initValAST);
-  ir::Value *dispatchAndConvert(ir::IRBuilder &builder, ast::BaseAST *ast);
-
   ir::Value *convertLval(ir::IRBuilder &builder, ast::LValAST *lvalAST);
+  ir::Value *convertFuncCall(ir::IRBuilder &builder,
+                             ast::FuncCallAST *funcCallAST);
+  ir::Value *dispatchAndConvert(ir::IRBuilder &builder, ast::BaseAST *ast);
 
   /// Create an unreachable block to prevent fall-through after a jump or
   /// return.

@@ -15,10 +15,13 @@ namespace ir {
 class Function : public IRObject {
 public:
   explicit Function(IRContext &context, const std::string &name,
+                    const std::vector<std::string> argNames,
                     FunctionType *funcType);
   BasicBlock *getEntryBlock() const;
   FuncArg *getArg(size_t index) const;
   size_t getNumArgs() const { return args.size(); }
+  const std::vector<FuncArg *> &getArgs() const { return args; }
+  bool hasArgs() const { return !args.empty(); }
   void addBlock(BasicBlock *block) {
     if (block) {
       blocks.push_back(block);
@@ -26,8 +29,9 @@ public:
   }
 
   static Function *create(IRContext &context, const std::string &name,
+                          const std::vector<std::string> argNames,
                           FunctionType *funcType) {
-    return context.create<Function>(name, funcType);
+    return context.create<Function>(name, argNames, funcType);
   }
 
   FunctionType *getFunctionType() const { return funcType; }

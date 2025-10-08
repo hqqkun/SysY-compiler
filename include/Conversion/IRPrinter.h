@@ -8,6 +8,7 @@
 
 #include "IR/BasicBlock.h"
 #include "IR/Function.h"
+#include "IR/Module.h"
 #include "IR/Operation.h"
 
 namespace conversion {
@@ -16,7 +17,7 @@ class IRPrinter {
 public:
   explicit IRPrinter(std::ostream &o) : os(o) {}
 
-  void printFunction(ir::Function *func);
+  void printModule(ir::Module *module);
 
 private:
   std::ostream &os;
@@ -44,12 +45,17 @@ private:
     }
   };
 
+  void printFunction(ir::Function *func);
   void printBasicBlock(ir::BasicBlock *block, OpResultMap &resultMap);
   void printOperation(ir::Operation *op, OpResultMap &resultMap);
   void printAllocOperation(ir::AllocOp *allocOp, OpResultMap &resultMap);
+  void printCallOperation(ir::CallOp *callOp, OpResultMap &resultMap);
   void printBranchOperation(ir::BranchOp *brOp, OpResultMap &resultMap);
   void printOperand(ir::Value *operand, OpResultMap &resultMap);
-  void printType(ir::Type *type);
+  void printBasicType(ir::Type *type);
+  void printFunctionType(ir::FunctionType *funcType,
+                         const std::vector<std::string> &paramNames);
+  void reset() { allocNames.clear(); }
 };
 
 } // namespace conversion

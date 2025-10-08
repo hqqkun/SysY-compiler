@@ -19,11 +19,16 @@ FuncArg *Function::getArg(size_t index) const {
 }
 
 Function::Function(IRContext &context, const std::string &name,
+                   const std::vector<std::string> argNames,
                    FunctionType *funcType)
     : name(name), funcType(funcType) {
-  for (Type *paramType : funcType->getParamTypes()) {
-    size_t index = args.size();
-    FuncArg *arg = context.create<FuncArg>(paramType, index);
+  assert(argNames.size() == funcType->getParamTypes().size() &&
+         "Argument names size must match parameter types size");
+
+  for (size_t i = 0; i < argNames.size(); ++i) {
+    const std::string &argName = argNames[i];
+    Type *paramType = funcType->getParamTypes()[i];
+    FuncArg *arg = context.create<FuncArg>(paramType, argName, i);
     args.push_back(arg);
   }
 }

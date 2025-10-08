@@ -8,6 +8,7 @@
 #include "IR/BasicBlock.h"
 #include "IR/Function.h"
 #include "IR/IRBuilder.h"
+#include "IR/Module.h"
 #include "IR/Operation.h"
 #include "Utils/Utils.h"
 
@@ -15,13 +16,26 @@ using namespace ast;
 
 namespace conversion {
 
-static ir::Type *ASTType2IRType(ir::IRContext &context, ast::Type bType) {
+static ir::Type *ASTType2IRBType(ir::IRContext &context, ast::Type bType) {
   switch (bType) {
     case ast::Type::INT:
       return ir::IntegerType::get(context, 32);
     default:
       assert(false && "Unsupported AST base type");
       return nullptr;
+  }
+}
+
+static std::optional<ir::Type *> ASTType2IRType(ir::IRContext &context,
+                                                ast::Type type) {
+  switch (type) {
+    case ast::Type::INT:
+      return ir::IntegerType::get(context, 32);
+    case ast::Type::VOID:
+      return std::nullopt; // Void type represented as nullopt.
+    default:
+      assert(false && "Unsupported AST base type");
+      return std::nullopt;
   }
 }
 
@@ -89,6 +103,8 @@ ir::Value *IRGen::convertUnaryExpr(ir::IRBuilder &builder,
         return nullptr;
       }
     }
+  } else if (unaryExprAST->isFuncCall()) {
+    return convertFuncCall(builder, unaryExprAST->funcCall.get());
   } else {
     assert(false && "Unknown unary expression type");
     return nullptr;
@@ -206,18 +222,44 @@ ir::Value *IRGen::convertLval(ir::IRBuilder &builder, ast::LValAST *lvalAST) {
   }
 }
 
+ir::Value *IRGen::convertFuncCall(ir::IRBuilder &builder,
+                                  ast::FuncCallAST *funcCallAST) {
+  assert(funcCallAST && "FuncCallAST cannot be null");
+  ir::FunctionType *funcType = varTables.getFunctionType(funcCallAST->ident);
+
+  // Prepare arguments.
+  std::vector<ir::Value *> args;
+  if (funcCallAST->hasParams()) {
+    for (const auto &param : *(funcCallAST->funcRParams)) {
+      args.push_back(dispatchAndConvert(builder, param->exp.get()));
+    }
+  }
+
+  if (funcType->hasReturnType()) {
+    return builder
+        .create<ir::CallOp>(funcCallAST->ident, args, funcType->getReturnType())
+        ->getResult();
+  } else {
+    builder.create<ir::CallOp>(funcCallAST->ident, args, nullptr);
+    return nullptr; // Void function call returns no value.
+  }
+}
+
 ir::Value *IRGen::convertInitValExp(ir::IRBuilder &builder,
                                     ast::InitValAST *initValAST) {
   assert(initValAST && "InitValAST cannot be null");
   return dispatchAndConvert(builder, initValAST->exp.get());
 }
 
-ir::FunctionType *IRGen::convertFunctionType(FuncTypeAST *funcTypeAST) {
-  if (!funcTypeAST || funcTypeAST->type != Type::INT)
-    return nullptr;
-
-  auto *intType = ir::IntegerType::get(context, 32);
-  return ir::FunctionType::get(context, intType, {});
+ir::FunctionType *
+IRGen::convertFunctionType(ast::Type retType,
+                           const std::vector<ast::Type> &paramTypes) {
+  std::optional<ir::Type *> mayIrRetType = ASTType2IRType(context, retType);
+  std::vector<ir::Type *> irParamTypes;
+  for (const auto &paramType : paramTypes) {
+    irParamTypes.push_back(ASTType2IRBType(context, paramType));
+  }
+  return ir::FunctionType::get(context, mayIrRetType, irParamTypes);
 }
 
 /// Convert statements.
@@ -429,7 +471,7 @@ void IRGen::convertVarDef(ir::IRBuilder &builder, ast::VarDefAST *varDefAST,
   // Since we allow variable shadowing, we use a unique name for each
   // allocation.
   std::string varName = varDefAST->var + "_" + std::to_string(getNextTempId());
-  ir::Type *allocType = ASTType2IRType(context, bType);
+  ir::Type *allocType = ASTType2IRBType(context, bType);
   ir::Value *alloc =
       builder.create<ir::AllocOp>(varName, allocType, true)->getResult();
   varTables.setValue(varDefAST->var, alloc);
@@ -470,28 +512,84 @@ void IRGen::createUnreachableBlock(ir::IRBuilder &builder) {
   builder.setInsertPoint(unreach);
 }
 
-ir::Function *IRGen::generate(std::unique_ptr<ast::BaseAST> &ast) {
-  auto *compUnit = dynamic_cast<CompUnitAST *>(ast.get());
-  auto *funcDef =
-      compUnit ? dynamic_cast<FuncDefAST *>(compUnit->funcDef.get()) : nullptr;
-  auto *funcTypeAST =
-      funcDef ? dynamic_cast<FuncTypeAST *>(funcDef->funcType.get()) : nullptr;
-  auto funcType = funcTypeAST ? convertFunctionType(funcTypeAST) : nullptr;
+ir::Function *IRGen::convertFuncDef(ast::FuncDefAST *funcDefAST) {
+  assert(funcDefAST && "Function definition AST cannot be null");
+  auto funcType = convertFunctionType(funcDefAST->getReturnType(),
+                                      funcDefAST->getParamTypes());
+  varTables.setFunctionType(funcDefAST->ident, funcType);
 
-  if (!funcDef || !funcType)
-    return nullptr;
-
-  ir::Function *function =
-      ir::Function::create(context, funcDef->ident, funcType);
+  ir::Function *function = ir::Function::create(
+      context, funcDefAST->ident, funcDefAST->getParamNames(), funcType);
 
   ir::IRBuilder builder(context);
   builder.setCurrentFunction(function);
   ir::BasicBlock *entryBlock = ir::BasicBlock::create(context, "entry");
   builder.setInsertPoint(entryBlock);
-  convertBlock(builder, dynamic_cast<BlockAST *>(funcDef->block.get()));
+  // Enter a new scope for the function arguments.
+  varTables.enterScope();
+
+  prepareFunctionArgs(builder, function);
+  convertBlock(builder, dynamic_cast<BlockAST *>(funcDefAST->block.get()));
+
+  // If the function does not end with a return, add a return instruction.
+  ir::BasicBlock *currentBlock = builder.getCurrentBlock();
+  if (!currentBlock->isTerminated()) {
+    if (!function->getFunctionType()->hasReturnType()) {
+      builder.create<ir::ReturnOp>();
+    } else {
+      assert(function->getFunctionType()->getReturnType()->isInteger() &&
+             "Only integer return type is supported");
+      // Return 0 by default for functions with integer return type.
+      ir::Integer *zero = ir::Integer::get(context, 0, 32);
+      builder.create<ir::ReturnOp>(zero);
+    }
+  }
   builder.commitBlock();
 
+  // Exit the function scope.
+  varTables.exitScope();
   return function;
+}
+
+void IRGen::prepareFunctionArgs(ir::IRBuilder &builder,
+                                ir::Function *function) {
+  assert(function && "Function cannot be null");
+  if (!function->hasArgs()) {
+    return;
+  }
+  for (ir::FuncArg *arg : function->getArgs()) {
+    // 1. Create an allocation for the argument.
+    auto *type = dynamic_cast<ir::IntegerType *>(arg->getType());
+    if (!type) {
+      continue;
+    }
+    ir::Value *alloc =
+        builder.create<ir::AllocOp>("", type, false)->getResult();
+    // Mapping the argument to the allocation.
+    varTables.setValue(arg->getName(), alloc);
+    // 2. Store the argument value into the allocation.
+    builder.create<ir::StoreOp>(arg, alloc);
+  }
+}
+
+ir::Module *IRGen::generate(std::unique_ptr<ast::BaseAST> &ast) {
+  assert(ast && "AST cannot be null");
+  auto *compUnit = dynamic_cast<CompUnitAST *>(ast.get());
+  assert(compUnit && "AST must be a compilation unit");
+  ir::Module *module = ir::Module::create(context);
+
+  // Create a global scope for the compilation unit.
+  varTables.enterScope();
+
+  for (auto &funcDefPtr : *compUnit->funcDefs) {
+    ir::Function *function =
+        convertFuncDef(dynamic_cast<FuncDefAST *>(funcDefPtr.get()));
+    module->addFunction(function);
+  }
+  // Exit the global scope.
+  varTables.exitScope();
+
+  return module;
 }
 
 } // namespace conversion

@@ -2,15 +2,21 @@
 
 namespace target {
 namespace riscv {
-void RISCVTargetMachine::codeGen(const ir::Function *func) {
-  if (!func) {
-    out << "# No function to generate code for.\n";
+void RISCVTargetMachine::codeGen(const ir::Module *module) {
+  if (!module) {
+    out << "# No module to generate code for.\n";
     return;
   }
-  // Instruction Selection.
-  std::vector<mc::MCInst> instrs = isel.selectInstructions(func);
-  // Emit Assembly.
-  asmPrinter.emitFunction(func, instrs);
+
+  for (const ir::Function *func : *module) {
+    if (!func) {
+      continue;
+    }
+    // Instruction Selection.
+    std::vector<mc::MCInst> instrs = isel.selectInstructions(func);
+    // Emit Assembly.
+    asmPrinter.emitFunction(func, instrs);
+  }
 }
 
 } // namespace riscv

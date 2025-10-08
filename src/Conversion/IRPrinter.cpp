@@ -18,11 +18,26 @@ static void printAllocPrefix(std::ostream &os, bool isUserVariable) {
   }
 }
 
+void IRPrinter::printModule(ir::Module *module) {
+  assert(module && "Module cannot be null");
+  for (ir::Function *func : *module) {
+    printFunction(func);
+    os << std::endl; // Separate functions with a newline.
+    reset();
+  }
+}
+
 void IRPrinter::printFunction(ir::Function *func) {
   assert(func && "Function cannot be null");
 
-  os << "fun @" << func->getName() << " ";
-  printType(func->getFunctionType());
+  // Collect argument names.
+  std::vector<std::string> argNames;
+  for (ir::FuncArg *arg : func->getArgs()) {
+    argNames.push_back(arg->getName());
+  }
+
+  os << "fun @" << func->getName();
+  printFunctionType(func->getFunctionType(), argNames);
   os << " {" << std::endl;
   OpResultMap resultMap;
   for (ir::BasicBlock *bb : *func) {
@@ -54,6 +69,11 @@ void IRPrinter::printOperation(ir::Operation *op, OpResultMap &resultMap) {
   }
   if (auto *brOp = dynamic_cast<ir::BranchOp *>(op)) {
     printBranchOperation(brOp, resultMap);
+    return;
+  }
+
+  if (auto *call = dynamic_cast<ir::CallOp *>(op)) {
+    printCallOperation(call, resultMap);
     return;
   }
 
@@ -96,6 +116,27 @@ void IRPrinter::printBranchOperation(ir::BranchOp *brOp,
   os << std::endl;
 }
 
+/// This is a specialized function to print CallOp.
+void IRPrinter::printCallOperation(ir::CallOp *callOp, OpResultMap &resultMap) {
+  assert(callOp && "CallOp cannot be null");
+  if (callOp->hasResult()) {
+    ir::OpResult *result = callOp->getResult();
+    assert(result && "CallOp's result is null");
+    uint64_t id = resultMap.insert(result);
+    os << "%" << id << " = ";
+  }
+  os << callOp->getOpName() << " @" << callOp->getFunctionName();
+  os << "(";
+  // Print operands.
+  for (size_t i = 0; i < callOp->getNumOperands(); ++i) {
+    if (i > 0) {
+      os << ", ";
+    }
+    printOperand(callOp->getOperand(i), resultMap);
+  }
+  os << ")" << std::endl;
+}
+
 /// Specialized function to print AllocOp with variable names.
 void IRPrinter::printAllocOperation(ir::AllocOp *allocOp,
                                     OpResultMap &resultMap) {
@@ -113,7 +154,7 @@ void IRPrinter::printAllocOperation(ir::AllocOp *allocOp,
     os << id;
   }
   os << " = " << allocOp->getOpName() << " ";
-  printType(allocOp->getAllocType());
+  printBasicType(allocOp->getAllocType());
   os << std::endl;
 }
 
@@ -134,35 +175,42 @@ void IRPrinter::printOperand(ir::Value *operand, OpResultMap &resultMap) {
     os << "%" << id;
   } else if (operand->isFuncArg()) {
     ir::FuncArg *funcArg = static_cast<ir::FuncArg *>(operand);
-    os << "arg" << funcArg->getIndex();
+    os << "@" << funcArg->getName();
   } else {
     assert(false && "Unknown operand type");
   }
 }
 
-void IRPrinter::printType(ir::Type *type) {
+void IRPrinter::printFunctionType(ir::FunctionType *funcType,
+                                  const std::vector<std::string> &paramNames) {
+  assert(funcType && "FunctionType cannot be null");
+  assert(funcType->getParamTypes().size() == paramNames.size() &&
+         "Parameter names size must match parameter types size");
+  os << "(";
+  const auto &paramTypes = funcType->getParamTypes();
+  for (size_t i = 0; i < paramTypes.size(); ++i) {
+    if (i > 0) {
+      os << ", ";
+    }
+    os << "@" << paramNames[i] << ": ";
+    printBasicType(paramTypes[i]);
+  }
+  os << ")";
+  if (!funcType->hasReturnType()) {
+    return;
+  }
+  os << ": ";
+  printBasicType(funcType->getReturnType());
+}
+
+/// Print basic types like integer and void.
+void IRPrinter::printBasicType(ir::Type *type) {
   assert(type && "Type cannot be null");
   if (type->isInteger()) {
     ir::IntegerType *intType = static_cast<ir::IntegerType *>(type);
     os << "i" << intType->getBitWidth();
   } else if (type->isVoid()) {
     os << "void";
-  } else if (type->isFunction()) {
-    ir::FunctionType *funcType = static_cast<ir::FunctionType *>(type);
-    os << "(";
-    const auto &paramTypes = funcType->getParamTypes();
-    for (size_t i = 0; i < paramTypes.size(); ++i) {
-      if (i > 0) {
-        os << ", ";
-      }
-      printType(paramTypes[i]);
-    }
-    os << ")";
-    if (!funcType->hasReturnType()) {
-      return;
-    }
-    os << ": ";
-    printType(funcType->getReturnType());
   } else {
     assert(false && "Unknown type");
   }

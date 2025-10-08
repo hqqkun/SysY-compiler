@@ -203,6 +203,17 @@ private:
   BasicBlock *targetBB;
 };
 
+class CallOp : public Operation {
+public:
+  explicit CallOp(IRContext &context, const std::string &funcName,
+                  const std::vector<Value *> &args, Type *retType = nullptr);
+  std::string_view getOpName() const override { return "call"; }
+  const std::string &getFunctionName() const { return funcName; }
+
+private:
+  std::string funcName;
+};
+
 } // namespace ir
 
 #endif // __IR_OPERATION_H__

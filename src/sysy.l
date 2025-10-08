@@ -37,6 +37,7 @@ Hexadecimal 0[xX][0-9a-fA-F]+
 "while"         {return WHILE;}
 "break"         {return BREAK;}
 "continue"      {return CONTINUE;}
+"void"          {return VOID;}
 {Identifier}    { yylval.str_val  = new std::string(yytext); return IDENT; }
 {Decimal}       { yylval.int_val = strtol(yytext, nullptr, 0); return INT_CONST; }
 {Octal}         { yylval.int_val = strtol(yytext, nullptr, 0); return INT_CONST; }
