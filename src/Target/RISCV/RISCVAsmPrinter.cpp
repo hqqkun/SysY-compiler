@@ -21,6 +21,7 @@ void RISCVAsmPrinter::emitFunction(const ir::Function *func,
   emitAsmHeader(func);
   emitLabel(func->getName());
   emitInstructions(instrs);
+  out << "\n";
 }
 
 void RISCVAsmPrinter::emitInstructions(const std::vector<mc::MCInst> &instrs) {
