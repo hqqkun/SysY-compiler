@@ -92,16 +92,19 @@ static const std::unordered_map<std::type_index, OpHandler> opHandlers = {
      }},
 };
 
+static Register loadFromStack(Register temp, std::vector<mc::MCInst> &outInsts,
+                              uint32_t offset) {
+  outInsts.push_back(
+      mc::MCInstBuilder(riscv::LW).addReg(temp).addMem(riscv::SP, offset));
+  return temp;
+}
+
 void RISCVInstrInfo::lowerReturn(ReturnOp *retOp,
                                  std::vector<mc::MCInst> &outInsts,
                                  const uint32_t stackSize) {
   assert(retOp && "ReturnOp is null");
   Value *retVal = retOp->getReturnValue();
-  if (!retVal) {
-    // Return without value, default to returning 0.
-    outInsts.push_back(
-        mc::MCInstBuilder(riscv::LI).addReg(riscv::A0).addImm(0));
-  } else {
+  if (retVal) {
     // Return with value.
     Register retReg = lowerOperand(retVal, Register::A0, outInsts);
     // If the returned register is ZERO, load immediate 0 into A0.
@@ -111,13 +114,7 @@ void RISCVInstrInfo::lowerReturn(ReturnOp *retOp,
     }
   }
 
-  if (stackSize != 0) {
-    // Restore stack pointer: addi sp, sp, stackSize
-    outInsts.push_back(mc::MCInstBuilder(riscv::ADDI)
-                           .addReg(riscv::SP)
-                           .addReg(riscv::SP)
-                           .addImm(static_cast<int32_t>(stackSize)));
-  }
+  emitEpilogue(outInsts, stackSize);
   outInsts.push_back(mc::MCInstBuilder(riscv::RET));
 }
 
@@ -204,25 +201,85 @@ void RISCVInstrInfo::lowerJumpOp(ir::JumpOp *jumpOp,
       mc::MCInstBuilder(riscv::JUMP).addLabel(targetBB->getName()));
 }
 
+void RISCVInstrInfo::lowerCallOp(ir::CallOp *callOp,
+                                 std::vector<mc::MCInst> &outInsts) {
+  assert(callOp && "CallOp is null");
+
+  // First 8 arguments are passed in A0-A7.
+  const size_t numArgs = callOp->getNumOperands();
+  for (size_t i = 0; i < numArgs && i < kMaxArgRegisters; ++i) {
+    Value *arg = callOp->getOperand(i);
+    assert(arg && "CallOp argument cannot be null");
+    Register argReg =
+        lowerOperand(arg, static_cast<Register>(riscv::A0 + i), outInsts);
+    // If the argument register is ZERO, load immediate 0 into the argument
+    // register.
+    if (argReg == riscv::ZERO) {
+      outInsts.push_back(mc::MCInstBuilder(riscv::LI)
+                             .addReg(static_cast<Register>(riscv::A0 + i))
+                             .addImm(0));
+    }
+  }
+
+  // Handle additional arguments on the stack.
+  for (size_t i = kMaxArgRegisters; i < numArgs; ++i) {
+    Value *arg = callOp->getOperand(i);
+    assert(arg && "CallOp argument cannot be null");
+    Register tempReg = lowerOperand(arg, Register::T0, outInsts);
+    uint32_t argOffset = (i - kMaxArgRegisters) * wordSize;
+    outInsts.push_back(mc::MCInstBuilder(riscv::SW).addReg(tempReg).addMem(
+        riscv::SP, argOffset));
+  }
+
+  // CALL function
+  outInsts.push_back(
+      mc::MCInstBuilder(riscv::CALL).addLabel(callOp->getFunctionName()));
+}
+
+/// Lower the given IR value to a given RISC-V register.
 Register RISCVInstrInfo::lowerOperand(ir::Value *val, Register temp,
                                       std::vector<mc::MCInst> &outInsts) {
   assert(val && "Value is null");
-  if (!val->isInteger()) {
-    uint32_t offset = getStackSlot(val);
-    outInsts.push_back(
-        mc::MCInstBuilder(riscv::LW).addReg(temp).addMem(riscv::SP, offset));
+
+  if (val->isInteger()) {
+    int imm = static_cast<Integer *>(val)->getValue();
+    // `0` is a special immediate value that can be directly mapped to the ZERO
+    // register.
+    if (imm == 0) {
+      return riscv::ZERO;
+    }
+    // LI temp, imm
+    outInsts.push_back(mc::MCInstBuilder(riscv::LI).addReg(temp).addImm(imm));
     return temp;
   }
 
-  int imm = static_cast<Integer *>(val)->getValue();
-  // `0` is a special immediate value that can be directly mapped to the ZERO
-  // register.
-  if (imm == 0) {
-    return riscv::ZERO;
+  // Check if the value is a function argument.
+  if (val->isFuncArg()) {
+    auto arg = static_cast<ir::FuncArg *>(val);
+    size_t index = arg->getIndex();
+    if (index < kMaxArgRegisters) {
+      return static_cast<Register>(riscv::A0 + index);
+    }
+    // Argument is passed on the stack.
+    uint32_t offset = (index - kMaxArgRegisters) * wordSize;
+    return loadFromStack(temp, outInsts, offset);
   }
-  // LI temp, imm
-  outInsts.push_back(mc::MCInstBuilder(riscv::LI).addReg(temp).addImm(imm));
-  return temp;
+
+  return loadFromStack(temp, outInsts, getStackSlot(val));
+}
+
+void RISCVInstrInfo::pushRa(std::vector<mc::MCInst> &outInsts) {
+  if (raStackOffset.has_value()) {
+    outInsts.push_back(mc::MCInstBuilder(riscv::SW).addReg(riscv::RA).addMem(
+        riscv::SP, *raStackOffset));
+  }
+}
+
+void RISCVInstrInfo::popRa(std::vector<mc::MCInst> &outInsts) {
+  if (raStackOffset.has_value()) {
+    outInsts.push_back(mc::MCInstBuilder(riscv::LW).addReg(riscv::RA).addMem(
+        riscv::SP, *raStackOffset));
+  }
 }
 
 void RISCVInstrInfo::emitPrologue(std::vector<mc::MCInst> &outInsts,
@@ -233,6 +290,19 @@ void RISCVInstrInfo::emitPrologue(std::vector<mc::MCInst> &outInsts,
                            .addReg(riscv::SP)
                            .addReg(riscv::SP)
                            .addImm(-static_cast<int32_t>(stackSize)));
+    pushRa(outInsts);
+  }
+}
+
+void RISCVInstrInfo::emitEpilogue(std::vector<mc::MCInst> &outInsts,
+                                  const uint32_t stackSize) {
+  if (stackSize > 0) {
+    popRa(outInsts);
+    // Restore stack pointer: addi sp, sp, stackSize
+    outInsts.push_back(mc::MCInstBuilder(riscv::ADDI)
+                           .addReg(riscv::SP)
+                           .addReg(riscv::SP)
+                           .addImm(static_cast<int32_t>(stackSize)));
   }
 }
 
@@ -259,10 +329,12 @@ std::string_view getRegisterName(Register reg) {
 
 std::string_view getOpTypeName(OpType op) {
   static const std::unordered_map<OpType, std::string_view> opNames = {
-      {ADD, "add"}, {ADDI, "addi"}, {AND, "and"}, {BNEZ, "bnez"}, {DIV, "div"},
-      {JUMP, "j"},  {LI, "li"},     {LW, "lw"},   {MUL, "mul"},   {MV, "mv"},
-      {OR, "or"},   {REM, "rem"},   {RET, "ret"}, {SEQZ, "seqz"}, {SGT, "sgt"},
-      {SLT, "slt"}, {SNEZ, "snez"}, {SUB, "sub"}, {SW, "sw"},     {XOR, "xor"}};
+      {ADD, "add"},   {ADDI, "addi"}, {AND, "and"},   {BNEZ, "bnez"},
+      {CALL, "call"}, {DIV, "div"},   {JUMP, "j"},    {LI, "li"},
+      {LW, "lw"},     {MUL, "mul"},   {MV, "mv"},     {OR, "or"},
+      {REM, "rem"},   {RET, "ret"},   {SEQZ, "seqz"}, {SGT, "sgt"},
+      {SLT, "slt"},   {SNEZ, "snez"}, {SUB, "sub"},   {SW, "sw"},
+      {XOR, "xor"}};
 
   if (auto it = opNames.find(op); it != opNames.end()) {
     return it->second;

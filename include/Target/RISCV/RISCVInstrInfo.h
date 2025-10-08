@@ -13,11 +13,15 @@
 namespace target {
 namespace riscv {
 
+constexpr uint32_t wordSize = 4;         // 4 bytes for 32-bit RISC-V.
+constexpr uint32_t kMaxArgRegisters = 8; // a0 - a7
+
 enum OpType {
   ADD,
   ADDI,
   AND,
   BNEZ, // Branch if Not Equal to Zero
+  CALL, // Call a function
   DIV,
   JUMP,
   LABEL, // Label
@@ -84,6 +88,7 @@ public:
   void lowerStoreOp(ir::StoreOp *storeOp, std::vector<mc::MCInst> &outInsts);
   void lowerBranchOp(ir::CondBranchOp *brOp, std::vector<mc::MCInst> &outInsts);
   void lowerJumpOp(ir::JumpOp *jumpOp, std::vector<mc::MCInst> &outInsts);
+  void lowerCallOp(ir::CallOp *callOp, std::vector<mc::MCInst> &outInsts);
   void emitPrologue(std::vector<mc::MCInst> &outInsts,
                     const uint32_t stackSize = 0);
   void emitLabel(std::string_view label, std::vector<mc::MCInst> &outInsts);
@@ -91,6 +96,7 @@ public:
   void resetMap() {
     value2RegMap.clear();
     value2StackSlotMap.clear();
+    raStackOffset.reset();
     offset = 0;
   }
 
@@ -98,9 +104,18 @@ public:
   void addStackSlot(ir::Value *val) {
     if (value2StackSlotMap.find(val) == value2StackSlotMap.end()) {
       value2StackSlotMap[val] = offset;
-      offset += 4; // Assuming 4 bytes per stack slot for simplicity.
+      offset += wordSize;
     }
   }
+
+  void reserveRaStackSlot() {
+    assert(!raStackOffset.has_value() &&
+           "Return address stack offset is already set");
+    raStackOffset = offset;
+    offset += wordSize;
+  }
+
+  void incrementStackOffset(uint32_t size) { offset += size; }
 
   uint32_t getStackSlot(ir::Value *val) {
     auto it = value2StackSlotMap.find(val);
@@ -119,10 +134,15 @@ private:
   std::unordered_map<ir::Value *, Register> value2RegMap;
   Register lowerOperand(ir::Value *val, Register temp,
                         std::vector<mc::MCInst> &outInsts);
+  void emitEpilogue(std::vector<mc::MCInst> &outInsts,
+                    const uint32_t stackSize);
+  void pushRa(std::vector<mc::MCInst> &outInsts);
+  void popRa(std::vector<mc::MCInst> &outInsts);
 
   // LV4: map each OpResult to a stack slot.
   std::unordered_map<ir::Value *, uint32_t> value2StackSlotMap;
-  uint32_t offset = 0; // Current stack offset in bytes.
+  uint32_t offset = 0;                   // Current stack offset in bytes.
+  std::optional<uint32_t> raStackOffset; // Stack offset for return address.
 };
 
 std::string_view getRegisterName(Register reg);
