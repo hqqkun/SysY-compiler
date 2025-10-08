@@ -3,7 +3,7 @@
 
 #include <ostream>
 
-#include "IR/Function.h"
+#include "IR/Module.h"
 
 namespace target {
 
@@ -13,8 +13,8 @@ public:
   virtual ~TargetMachine() = default;
 
   // Generate target-specific assembly code
-  // for the given function to the output stream.
-  virtual void codeGen(const ir::Function *func) = 0;
+  // for the given module to the output stream.
+  virtual void codeGen(const ir::Module *module) = 0;
 
 protected:
   std::ostream &out;

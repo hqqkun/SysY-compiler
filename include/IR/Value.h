@@ -60,9 +60,11 @@ private:
 
 class FuncArg : public Value {
 public:
-  explicit FuncArg(IRContext &context, Type *type, size_t index)
-      : Value(type, ValueKind::kFuncArg), index(index) {}
+  explicit FuncArg(IRContext &context, Type *type, const std::string &argName,
+                   size_t index)
+      : Value(type, ValueKind::kFuncArg), name(argName), index(index) {}
   size_t getIndex() const { return index; }
+  const std::string &getName() const { return name; }
 
 private:
   std::string name; // argument name

@@ -59,7 +59,7 @@ public:
   bool hasReturnType() const { return _returnType.has_value(); }
   const std::vector<Type *> &getParamTypes() const { return paramTypes; }
 
-  static FunctionType *get(IRContext &context, Type *returnType,
+  static FunctionType *get(IRContext &context, std::optional<Type *> returnType,
                            const std::vector<Type *> &paramTypes);
 
 private:

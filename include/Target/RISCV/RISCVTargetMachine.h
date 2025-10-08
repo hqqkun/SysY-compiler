@@ -17,7 +17,7 @@ public:
   explicit RISCVTargetMachine(std::ostream &o)
       : TargetMachine(o), asmPrinter(o) {}
 
-  void codeGen(const ir::Function *func) override;
+  void codeGen(const ir::Module *module) override;
 
 private:
   RISCVISel isel;

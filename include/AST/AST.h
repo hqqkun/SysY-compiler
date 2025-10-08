@@ -12,7 +12,9 @@
 namespace ast {
 using ASTPtr = std::unique_ptr<class BaseAST>;
 using BlockItemPtr = std::unique_ptr<class BlockItemAST>;
-
+using FuncFParamPtr = std::unique_ptr<class FuncFParamAST>;
+using FuncRParamPtr = std::unique_ptr<class ExprAST>;
+using FuncCallPtr = std::unique_ptr<class FuncCallAST>;
 class ExprAST;
 
 class BaseAST {
@@ -23,16 +25,44 @@ public:
 
 class CompUnitAST : public BaseAST {
 public:
-  ASTPtr funcDef;
+  std::unique_ptr<std::vector<ASTPtr>> funcDefs;
   void dump() const override;
+
+  CompUnitAST(std::unique_ptr<std::vector<ASTPtr>> funcs)
+      : funcDefs(std::move(funcs)) {}
 };
 
 class FuncDefAST : public BaseAST {
 public:
-  ASTPtr funcType;
+  ASTPtr retType;
   std::string ident;
+  std::unique_ptr<std::vector<FuncFParamPtr>> funcFParams;
   ASTPtr block;
   void dump() const override;
+
+  FuncDefAST(ASTPtr type, const std::string &name, ASTPtr b)
+      : retType(std::move(type)), ident(name), funcFParams(nullptr),
+        block(std::move(b)) {}
+  FuncDefAST(ASTPtr type, const std::string &name,
+             std::unique_ptr<std::vector<FuncFParamPtr>> params, ASTPtr b)
+      : retType(std::move(type)), ident(name), funcFParams(std::move(params)),
+        block(std::move(b)) {}
+
+  bool hasParams() const { return funcFParams != nullptr; }
+  Type getReturnType() const;
+  Type getParamType(size_t index) const;
+  std::vector<Type> getParamTypes() const;
+  std::vector<std::string> getParamNames() const;
+};
+
+/// Function formal parameter
+class FuncFParamAST : public BaseAST {
+public:
+  Type type;
+  std::string ident;
+  void dump() const override;
+
+  FuncFParamAST(Type t, const std::string &name) : type(t), ident(name) {}
 };
 
 class FuncTypeAST : public BaseAST {
@@ -251,12 +281,13 @@ private:
   enum class Type { NUMBER, EXP, LVAL } type;
 };
 
-// UnaryExp ::= PrimaryExp | UnaryOp UnaryExp
+// UnaryExp ::= PrimaryExp | UnaryOp UnaryExp | FuncCall
 class UnaryExpAST : public BaseAST {
 public:
   ASTPtr primaryExp;
   Op unaryOp;
   ASTPtr childUnaryExp;
+  FuncCallPtr funcCall;
   void dump() const override;
 
   UnaryExpAST(ASTPtr primary)
@@ -265,12 +296,31 @@ public:
   UnaryExpAST(Op op, ASTPtr child)
       : unaryOp(op), childUnaryExp(std::move(child)), type(Type::UNARY_OP) {}
 
+  UnaryExpAST(FuncCallPtr call)
+      : funcCall(std::move(call)), type(Type::FCALL) {}
+
   bool isPrimary() const { return type == Type::PRIMARY; }
   bool isUnaryOp() const { return type == Type::UNARY_OP; }
+  bool isFuncCall() const { return type == Type::FCALL; }
 
 private:
-  enum class Type { PRIMARY, UNARY_OP } type;
+  enum class Type { PRIMARY, UNARY_OP, FCALL } type;
 };
+
+class FuncCallAST : public BaseAST {
+public:
+  std::string ident;
+  std::unique_ptr<std::vector<FuncRParamPtr>> funcRParams;
+  void dump() const override;
+
+  FuncCallAST(const std::string &name) : ident(name), funcRParams(nullptr) {}
+  FuncCallAST(const std::string &name,
+              std::unique_ptr<std::vector<FuncRParamPtr>> params)
+      : ident(name), funcRParams(std::move(params)) {}
+
+  bool hasParams() const { return funcRParams != nullptr; }
+};
+
 class ConstExpAST : public BaseAST {
 public:
   ASTPtr exp;

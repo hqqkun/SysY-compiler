@@ -167,4 +167,19 @@ JumpOp::JumpOp(IRContext &context, BasicBlock *target) {
   // JumpOp has no result type.
 }
 
+CallOp::CallOp(IRContext &context, const std::string &funcName,
+               const std::vector<Value *> &args, Type *retType)
+    : funcName(funcName) {
+  assert(!funcName.empty() && "CallOp function name cannot be empty");
+  for (auto *arg : args) {
+    assert(arg && "CallOp argument cannot be null");
+    operands.emplace_back(arg);
+    arg->addUser(this);
+  }
+  if (retType) {
+    resultType = retType;
+    result = context.create<OpResult>(this);
+  }
+}
+
 } // namespace ir

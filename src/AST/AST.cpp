@@ -32,16 +32,19 @@ BlockItemAST::BlockItemAST(ASTPtr item) {
 
 void CompUnitAST::dump() const {
   std::cout << "CompUnitAST { ";
-  if (funcDef) {
-    funcDef->dump();
+  for (size_t i = 0; i < funcDefs->size(); ++i) {
+    if (i != 0) {
+      std::cout << ", ";
+    }
+    (*funcDefs)[i]->dump();
   }
   std::cout << " }" << std::endl;
 }
 
 void FuncDefAST::dump() const {
   std::cout << "FuncDefAST { ";
-  if (funcType) {
-    funcType->dump();
+  if (retType) {
+    retType->dump();
   }
   std::cout << ", " << ident << ", ";
   if (block) {
@@ -55,6 +58,9 @@ void FuncTypeAST::dump() const {
   switch (type) {
     case Type::INT:
       std::cout << "INT";
+      break;
+    case Type::VOID:
+      std::cout << "VOID";
       break;
   }
   std::cout << " }";
@@ -75,11 +81,7 @@ void DeclAST::dump() const {
 
 void ConstDeclAST::dump() const {
   std::cout << "ConstDeclAST { ";
-  switch (bType) {
-    case Type::INT:
-      std::cout << "INT";
-      break;
-  }
+  std::cout << toString(bType);
   std::cout << ", [ ";
   for (size_t i = 0; i < constDefs->size(); ++i) {
     if (i != 0) {
@@ -108,11 +110,7 @@ void ConstInitValAST::dump() const {
 
 void VarDeclAST::dump() const {
   std::cout << "VarDeclAST { ";
-  switch (bType) {
-    case Type::INT:
-      std::cout << "INT";
-      break;
-  }
+  std::cout << toString(bType);
   std::cout << ", [ ";
   for (size_t i = 0; i < varDefs->size(); ++i) {
     if (i != 0) {
@@ -261,6 +259,8 @@ void UnaryExpAST::dump() const {
   } else if (isUnaryOp()) {
     std::cout << unaryOp << ": ";
     childUnaryExp->dump();
+  } else if (isFuncCall()) {
+    funcCall->dump();
   } else {
     assert(false && "Invalid UnaryExpAST");
   }
@@ -290,6 +290,61 @@ void ConstExpAST::dump() const {
   std::cout << " }";
 }
 
+void FuncCallAST::dump() const {
+  std::cout << "FuncCallAST { " << ident << ", [ ";
+  if (hasParams()) {
+    for (size_t i = 0; i < funcRParams->size(); ++i) {
+      if (i != 0) {
+        std::cout << ", ";
+      }
+      (*funcRParams)[i]->dump();
+    }
+  }
+  std::cout << " ] }";
+}
+
+void FuncFParamAST::dump() const {
+  std::cout << "FuncFParamAST { ";
+  std::cout << toString(type);
+  std::cout << ", " << ident << " }";
+}
+
+Type FuncDefAST::getReturnType() const {
+  if (auto *funcType = dynamic_cast<FuncTypeAST *>(retType.get())) {
+    return funcType->type;
+  }
+  assert(false && "Return type is not FuncTypeAST");
+  return Type::VOID; // Unreachable
+}
+
+Type FuncDefAST::getParamType(size_t index) const {
+  if (!funcFParams || index >= funcFParams->size()) {
+    assert(false && "Parameter index out of range");
+    return Type::VOID; // Unreachable
+  }
+  return (*funcFParams)[index]->type;
+}
+
+std::vector<Type> FuncDefAST::getParamTypes() const {
+  std::vector<Type> types;
+  if (funcFParams) {
+    for (const auto &param : *funcFParams) {
+      types.push_back(param->type);
+    }
+  }
+  return types;
+}
+
 bool isLogicalOp(Op op) { return op == Op::LAND || op == Op::LOR; }
+
+std::vector<std::string> FuncDefAST::getParamNames() const {
+  std::vector<std::string> names;
+  if (funcFParams) {
+    for (const auto &param : *funcFParams) {
+      names.push_back(param->ident);
+    }
+  }
+  return names;
+}
 
 } // namespace ast
