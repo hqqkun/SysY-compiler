@@ -15,6 +15,7 @@ using BlockItemPtr = std::unique_ptr<class BlockItemAST>;
 using FuncFParamPtr = std::unique_ptr<class FuncFParamAST>;
 using FuncRParamPtr = std::unique_ptr<class ExprAST>;
 using FuncCallPtr = std::unique_ptr<class FuncCallAST>;
+using TypePtr = std::unique_ptr<struct Type>;
 class ExprAST;
 
 class BaseAST {
@@ -49,25 +50,26 @@ public:
         block(std::move(b)) {}
 
   bool hasParams() const { return funcFParams != nullptr; }
-  Type getReturnType() const;
-  Type getParamType(size_t index) const;
-  std::vector<Type> getParamTypes() const;
+  const Type *getReturnType() const;
+  const Type *getParamType(size_t index) const;
+  const std::vector<const Type *> getParamTypes() const;
   std::vector<std::string> getParamNames() const;
 };
 
 /// Function formal parameter
 class FuncFParamAST : public BaseAST {
 public:
-  Type type;
+  TypePtr type;
   std::string ident;
   void dump() const override;
 
-  FuncFParamAST(Type t, const std::string &name) : type(t), ident(name) {}
+  FuncFParamAST(TypePtr t, const std::string &name)
+      : type(std::move(t)), ident(name) {}
 };
 
 class FuncTypeAST : public BaseAST {
 public:
-  Type type;
+  TypePtr type;
   void dump() const override;
 };
 
@@ -88,22 +90,22 @@ private:
 
 class ConstDeclAST : public BaseAST {
 public:
-  Type bType;
+  TypePtr bType;
   std::unique_ptr<std::vector<ASTPtr>> constDefs;
   void dump() const override;
 
-  ConstDeclAST(Type type, std::unique_ptr<std::vector<ASTPtr>> defs)
-      : bType(type), constDefs(std::move(defs)) {}
+  ConstDeclAST(TypePtr type, std::unique_ptr<std::vector<ASTPtr>> defs)
+      : bType(std::move(type)), constDefs(std::move(defs)) {}
 };
 
 class VarDeclAST : public BaseAST {
 public:
-  Type bType;
+  TypePtr bType;
   std::unique_ptr<std::vector<ASTPtr>> varDefs;
   void dump() const override;
 
-  VarDeclAST(Type type, std::unique_ptr<std::vector<ASTPtr>> defs)
-      : bType(type), varDefs(std::move(defs)) {}
+  VarDeclAST(TypePtr type, std::unique_ptr<std::vector<ASTPtr>> defs)
+      : bType(std::move(type)), varDefs(std::move(defs)) {}
 };
 
 class ConstDefAST : public BaseAST {

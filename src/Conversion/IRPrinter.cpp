@@ -20,6 +20,18 @@ static void printAllocPrefix(std::ostream &os, bool isUserVariable) {
 
 void IRPrinter::printModule(ir::Module *module) {
   assert(module && "Module cannot be null");
+  // Print all function declarations first.
+  for (ir::Declaration *decl : module->getDeclarations()) {
+    assert(decl && "Declaration cannot be null");
+    if (decl->isFunction()) {
+      auto *funcDecl = static_cast<ir::FunctionDecl *>(decl);
+      printFunctionDeclaration(funcDecl);
+    }
+  }
+  if (module->getDeclarations().size()) {
+    os << std::endl; // Separate declarations and definitions with a newline.
+  }
+
   for (ir::Function *func : *module) {
     printFunction(func);
     os << std::endl; // Separate functions with a newline.
@@ -182,28 +194,32 @@ void IRPrinter::printOperand(ir::Value *operand, OpResultMap &resultMap) {
 }
 
 void IRPrinter::printFunctionType(ir::FunctionType *funcType,
-                                  const std::vector<std::string> &paramNames) {
+                                  const std::vector<std::string> &paramNames,
+                                  bool withParamNames) {
   assert(funcType && "FunctionType cannot be null");
-  assert(funcType->getParamTypes().size() == paramNames.size() &&
-         "Parameter names size must match parameter types size");
+  if (withParamNames) {
+    assert(funcType->getParamTypes().size() == paramNames.size() &&
+           "Parameter names size must match parameter types size");
+  }
   os << "(";
   const auto &paramTypes = funcType->getParamTypes();
   for (size_t i = 0; i < paramTypes.size(); ++i) {
     if (i > 0) {
       os << ", ";
     }
-    os << "@" << paramNames[i] << ": ";
+    if (withParamNames) {
+      os << "@" << paramNames[i] << ": ";
+    }
     printBasicType(paramTypes[i]);
   }
   os << ")";
-  if (!funcType->hasReturnType()) {
-    return;
+  if (funcType->hasReturnType()) {
+    os << ": ";
+    printBasicType(funcType->getReturnType());
   }
-  os << ": ";
-  printBasicType(funcType->getReturnType());
 }
 
-/// Print basic types like integer and void.
+/// Print basic types like integer, void and pointer types.
 void IRPrinter::printBasicType(ir::Type *type) {
   assert(type && "Type cannot be null");
   if (type->isInteger()) {
@@ -211,9 +227,21 @@ void IRPrinter::printBasicType(ir::Type *type) {
     os << "i" << intType->getBitWidth();
   } else if (type->isVoid()) {
     os << "void";
+  } else if (type->isPointer()) {
+    ir::PointerType *ptrType = static_cast<ir::PointerType *>(type);
+    os << "*";
+    printBasicType(ptrType->getPointeeType());
   } else {
     assert(false && "Unknown type");
   }
+}
+
+void IRPrinter::printFunctionDeclaration(ir::FunctionDecl *funcDecl) {
+  assert(funcDecl && "FunctionDecl cannot be null");
+
+  os << "decl @" << funcDecl->getIdent();
+  printFunctionType(funcDecl->getFunctionType(), {}, false);
+  os << std::endl;
 }
 
 } // namespace conversion

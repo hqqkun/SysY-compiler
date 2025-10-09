@@ -16,27 +16,34 @@ using namespace ast;
 
 namespace conversion {
 
-static ir::Type *ASTType2IRBType(ir::IRContext &context, ast::Type bType) {
-  switch (bType) {
-    case ast::Type::INT:
-      return ir::IntegerType::get(context, 32);
-    default:
-      assert(false && "Unsupported AST base type");
-      return nullptr;
-  }
-}
-
+/// Convert AST Type to IR Type.
+/// If the type is void, return std::nullopt.
 static std::optional<ir::Type *> ASTType2IRType(ir::IRContext &context,
-                                                ast::Type type) {
-  switch (type) {
-    case ast::Type::INT:
-      return ir::IntegerType::get(context, 32);
-    case ast::Type::VOID:
-      return std::nullopt; // Void type represented as nullopt.
-    default:
-      assert(false && "Unsupported AST base type");
-      return std::nullopt;
+                                                const Type &type) {
+  switch (type.kind) {
+    case Type::Kind::BASE: {
+      switch (type.base) {
+        case BaseType::INT:
+          return ir::IntegerType::get(context, 32);
+        case BaseType::VOID:
+          return std::nullopt; // Void type represented as nullopt.
+        default:
+          assert(false && "Unsupported AST base type");
+          return std::nullopt;
+      }
+    }
+    case Type::Kind::POINTER: {
+      if (!type.pointee) {
+        return std::nullopt; // Malformed AST: missing pointee type.
+      }
+      auto pointeeTypeOpt = ASTType2IRType(context, *type.pointee);
+      if (!pointeeTypeOpt.has_value()) {
+        return std::nullopt; // Void pointer represented as nullopt.
+      }
+      return ir::PointerType::get(context, pointeeTypeOpt.value());
+    }
   }
+  assert(false && "Unsupported AST type kind");
 }
 
 ir::Value *IRGen::dispatchAndConvert(ir::IRBuilder &builder,
@@ -225,7 +232,10 @@ ir::Value *IRGen::convertLval(ir::IRBuilder &builder, ast::LValAST *lvalAST) {
 ir::Value *IRGen::convertFuncCall(ir::IRBuilder &builder,
                                   ast::FuncCallAST *funcCallAST) {
   assert(funcCallAST && "FuncCallAST cannot be null");
-  ir::FunctionType *funcType = varTables.getFunctionType(funcCallAST->ident);
+  auto *funcDecl = dynamic_cast<ir::FunctionDecl *>(
+      varTables.getDeclaration(funcCallAST->ident));
+  assert(funcDecl && "Function declaration not found in symbol table");
+  ir::FunctionType *funcType = funcDecl->getFunctionType();
 
   // Prepare arguments.
   std::vector<ir::Value *> args;
@@ -252,12 +262,13 @@ ir::Value *IRGen::convertInitValExp(ir::IRBuilder &builder,
 }
 
 ir::FunctionType *
-IRGen::convertFunctionType(ast::Type retType,
-                           const std::vector<ast::Type> &paramTypes) {
+IRGen::convertFunctionType(const Type &retType,
+                           const std::vector<const Type *> &paramTypes) {
   std::optional<ir::Type *> mayIrRetType = ASTType2IRType(context, retType);
   std::vector<ir::Type *> irParamTypes;
   for (const auto &paramType : paramTypes) {
-    irParamTypes.push_back(ASTType2IRBType(context, paramType));
+    ir::Type *irType = ASTType2IRType(context, *paramType).value();
+    irParamTypes.push_back(irType);
   }
   return ir::FunctionType::get(context, mayIrRetType, irParamTypes);
 }
@@ -459,19 +470,19 @@ void IRGen::convertVarDecl(ir::IRBuilder &builder,
   size_t size = varDeclAST->varDefs->size();
   for (size_t i = 0; i < size; ++i) {
     auto *varDef = dynamic_cast<VarDefAST *>((*varDeclAST->varDefs)[i].get());
-    convertVarDef(builder, varDef, varDeclAST->bType);
+    convertVarDef(builder, varDef, *varDeclAST->bType.get());
   }
 }
 
 void IRGen::convertVarDef(ir::IRBuilder &builder, ast::VarDefAST *varDefAST,
-                          ast::Type bType) {
+                          const ast::Type &bType) {
   assert(varDefAST && "VarDefAST cannot be null");
 
   // 1. Create allocation.
   // Since we allow variable shadowing, we use a unique name for each
   // allocation.
   std::string varName = varDefAST->var + "_" + std::to_string(getNextTempId());
-  ir::Type *allocType = ASTType2IRBType(context, bType);
+  ir::Type *allocType = ASTType2IRType(context, bType).value();
   ir::Value *alloc =
       builder.create<ir::AllocOp>(varName, allocType, true)->getResult();
   varTables.setValue(varDefAST->var, alloc);
@@ -514,9 +525,11 @@ void IRGen::createUnreachableBlock(ir::IRBuilder &builder) {
 
 ir::Function *IRGen::convertFuncDef(ast::FuncDefAST *funcDefAST) {
   assert(funcDefAST && "Function definition AST cannot be null");
-  auto funcType = convertFunctionType(funcDefAST->getReturnType(),
+  auto funcType = convertFunctionType(*funcDefAST->getReturnType(),
                                       funcDefAST->getParamTypes());
-  varTables.setFunctionType(funcDefAST->ident, funcType);
+  ir::FunctionDecl *funcDecl =
+      ir::FunctionDecl::create(context, funcDefAST->ident, funcType);
+  varTables.setDeclaration(funcDefAST->ident, funcDecl);
 
   ir::Function *function = ir::Function::create(
       context, funcDefAST->ident, funcDefAST->getParamNames(), funcType);
@@ -573,6 +586,52 @@ void IRGen::prepareFunctionArgs(ir::IRBuilder &builder,
   }
 }
 
+/// Add declarations for built-in library functions.
+struct LibFunc {
+  std::string name;
+  std::vector<const Type *> paramTypes;
+  const Type *returnType;
+};
+
+// Accessor functions for AST type definitions to avoid static initialization
+// order issues.
+static const Type *getASTIntType() {
+  static const Type instance(BaseType::INT);
+  return &instance;
+}
+
+static const Type *getASTVoidType() {
+  static const Type instance(BaseType::VOID);
+  return &instance;
+}
+
+static const Type *getASTIntPtrType() {
+  static const Type instance(getASTIntType());
+  return &instance;
+}
+
+static const std::vector<LibFunc> libFuncs = {
+    {"getint", {}, getASTIntType()},
+    {"getch", {}, getASTIntType()},
+    {"getarray", {getASTIntPtrType()}, getASTVoidType()},
+    {"putint", {getASTIntType()}, getASTVoidType()},
+    {"putch", {getASTIntType()}, getASTVoidType()},
+    {"putarray", {getASTIntType(), getASTIntPtrType()}, getASTVoidType()},
+    {"starttime", {}, getASTVoidType()},
+    {"stoptime", {}, getASTVoidType()}};
+
+void IRGen::addLibFuncDeclarations(ir::Module *module) {
+  assert(module && "Module cannot be null");
+  for (const LibFunc &libFunc : libFuncs) {
+    auto funcType =
+        convertFunctionType(*libFunc.returnType, libFunc.paramTypes);
+    ir::FunctionDecl *funcDecl =
+        ir::FunctionDecl::create(context, libFunc.name, funcType);
+    module->addDeclaration(funcDecl);
+    varTables.setDeclaration(libFunc.name, funcDecl);
+  }
+}
+
 ir::Module *IRGen::generate(std::unique_ptr<ast::BaseAST> &ast) {
   assert(ast && "AST cannot be null");
   auto *compUnit = dynamic_cast<CompUnitAST *>(ast.get());
@@ -581,6 +640,9 @@ ir::Module *IRGen::generate(std::unique_ptr<ast::BaseAST> &ast) {
 
   // Create a global scope for the compilation unit.
   varTables.enterScope();
+
+  // Add built-in library function declarations.
+  addLibFuncDeclarations(module);
 
   for (auto &funcDefPtr : *compUnit->funcDefs) {
     ir::Function *function =

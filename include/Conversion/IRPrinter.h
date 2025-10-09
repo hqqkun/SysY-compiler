@@ -54,7 +54,9 @@ private:
   void printOperand(ir::Value *operand, OpResultMap &resultMap);
   void printBasicType(ir::Type *type);
   void printFunctionType(ir::FunctionType *funcType,
-                         const std::vector<std::string> &paramNames);
+                         const std::vector<std::string> &paramNames,
+                         bool withParamNames = true);
+  void printFunctionDeclaration(ir::FunctionDecl *funcDecl);
   void reset() { allocNames.clear(); }
 };
 
