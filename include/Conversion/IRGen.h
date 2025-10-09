@@ -34,11 +34,14 @@ private:
   uint64_t nextTempId;
   LoopStack loopStack;
 
+  /// Add library function declarations to the symbol table.
+  void addLibFuncDeclarations(ir::Module *module);
+
   /// Convert function definition.
   ir::Function *convertFuncDef(ast::FuncDefAST *funcDefAST);
   ir::FunctionType *
-  convertFunctionType(ast::Type retType,
-                      const std::vector<ast::Type> &paramTypes);
+  convertFunctionType(const ast::Type &retType,
+                      const std::vector<const ast::Type *> &paramTypes);
   void prepareFunctionArgs(ir::IRBuilder &builder, ir::Function *function);
 
   void convertBlock(ir::IRBuilder &builder, ast::BlockAST *blockAST);
@@ -63,7 +66,7 @@ private:
   void convertVarDecl(ir::IRBuilder &builder, ast::VarDeclAST *varDeclAST);
   void convertConstDef(ast::ConstDefAST *constDefAST);
   void convertVarDef(ir::IRBuilder &builder, ast::VarDefAST *varDefAST,
-                     ast::Type bType = ast::Type::INT);
+                     const ast::Type &bType);
 
   /// Convert an expression AST to an IR Value.
   ir::Value *convertExpr(ir::IRBuilder &builder, ast::ExprAST *exprAST);

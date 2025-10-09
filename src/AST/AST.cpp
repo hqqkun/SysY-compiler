@@ -55,14 +55,7 @@ void FuncDefAST::dump() const {
 
 void FuncTypeAST::dump() const {
   std::cout << "FuncTypeAST { ";
-  switch (type) {
-    case Type::INT:
-      std::cout << "INT";
-      break;
-    case Type::VOID:
-      std::cout << "VOID";
-      break;
-  }
+  std::cout << toString(*type.get());
   std::cout << " }";
 }
 
@@ -81,7 +74,7 @@ void DeclAST::dump() const {
 
 void ConstDeclAST::dump() const {
   std::cout << "ConstDeclAST { ";
-  std::cout << toString(bType);
+  std::cout << toString(*bType.get());
   std::cout << ", [ ";
   for (size_t i = 0; i < constDefs->size(); ++i) {
     if (i != 0) {
@@ -110,7 +103,7 @@ void ConstInitValAST::dump() const {
 
 void VarDeclAST::dump() const {
   std::cout << "VarDeclAST { ";
-  std::cout << toString(bType);
+  std::cout << toString(*bType.get());
   std::cout << ", [ ";
   for (size_t i = 0; i < varDefs->size(); ++i) {
     if (i != 0) {
@@ -305,31 +298,33 @@ void FuncCallAST::dump() const {
 
 void FuncFParamAST::dump() const {
   std::cout << "FuncFParamAST { ";
-  std::cout << toString(type);
+  std::cout << toString(*type.get());
   std::cout << ", " << ident << " }";
 }
 
-Type FuncDefAST::getReturnType() const {
+const Type *FuncDefAST::getReturnType() const {
+  static const Type VOID_TYPE = Type(BaseType::VOID);
   if (auto *funcType = dynamic_cast<FuncTypeAST *>(retType.get())) {
-    return funcType->type;
+    return funcType->type.get();
   }
   assert(false && "Return type is not FuncTypeAST");
-  return Type::VOID; // Unreachable
+  return &VOID_TYPE; // Unreachable
 }
 
-Type FuncDefAST::getParamType(size_t index) const {
+const Type *FuncDefAST::getParamType(size_t index) const {
+  static const Type VOID_TYPE = Type(BaseType::VOID);
   if (!funcFParams || index >= funcFParams->size()) {
     assert(false && "Parameter index out of range");
-    return Type::VOID; // Unreachable
+    return &VOID_TYPE; // Unreachable
   }
-  return (*funcFParams)[index]->type;
+  return (*funcFParams)[index]->type.get();
 }
 
-std::vector<Type> FuncDefAST::getParamTypes() const {
-  std::vector<Type> types;
+const std::vector<const Type *> FuncDefAST::getParamTypes() const {
+  std::vector<const Type *> types;
   if (funcFParams) {
     for (const auto &param : *funcFParams) {
-      types.push_back(param->type);
+      types.push_back(param->type.get());
     }
   }
   return types;

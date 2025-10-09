@@ -7,6 +7,7 @@
 #include <unordered_map>
 #include <variant>
 
+#include "IR/Declaration.h"
 #include "IR/Operation.h"
 #include "IR/Value.h"
 
@@ -16,8 +17,8 @@ public:
   /// A value in the symbol table can be:
   /// - ir::Value* : a pointer to a variable.
   /// - int32_t : a constant integer value.
-  /// - ir::FunctionType* : a function type (for function calls).
-  using Val = std::variant<ir::Value *, int32_t, ir::FunctionType *>;
+  /// - ir::Declaration* : a function declaration.
+  using Val = std::variant<ir::Value *, int32_t, ir::Declaration *>;
   using Table = std::unordered_map<std::string, Val>;
 
   int32_t getConstant(const std::string &name) const {
@@ -42,12 +43,12 @@ public:
     assert(false && "Value not found in symbol table");
   }
 
-  ir::FunctionType *getFunctionType(const std::string &name) const {
+  ir::Declaration *getDeclaration(const std::string &name) const {
     for (auto it = symbolTables.begin(); it != symbolTables.end(); ++it) {
       auto found = it->find(name);
       if (found != it->end() &&
-          std::holds_alternative<ir::FunctionType *>(found->second)) {
-        return std::get<ir::FunctionType *>(found->second);
+          std::holds_alternative<ir::Declaration *>(found->second)) {
+        return std::get<ir::Declaration *>(found->second);
       }
     }
     assert(false && "Function type not found in symbol table");
@@ -73,9 +74,9 @@ public:
     symbolTables.front()[name] = value;
   }
 
-  void setFunctionType(const std::string &name, ir::FunctionType *funcType) {
+  void setDeclaration(const std::string &name, ir::Declaration *decl) {
     assert(!symbolTables.empty() && "No symbol table available");
-    symbolTables.front()[name] = funcType;
+    symbolTables.front()[name] = decl;
   }
 
   void enterScope() { symbolTables.emplace_front(); }

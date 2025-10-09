@@ -3,6 +3,7 @@
 
 #include <list>
 
+#include "IR/Declaration.h"
 #include "IR/Function.h"
 
 namespace ir {
@@ -14,6 +15,16 @@ public:
     if (func) {
       functions.push_back(func);
     }
+  }
+  void addDeclaration(Declaration *decl) {
+    if (decl) {
+      declarations.push_back(decl);
+    }
+  }
+
+  const std::list<Function *> &getFunctions() const { return functions; }
+  const std::list<Declaration *> &getDeclarations() const {
+    return declarations;
   }
 
   static Module *create(IRContext &context) { return context.create<Module>(); }
@@ -29,6 +40,7 @@ public:
 private:
   // TODO: Add global variables, etc.
   std::list<Function *> functions;
+  std::list<Declaration *> declarations;
 };
 
 } // namespace ir
