@@ -28,20 +28,6 @@ static uint32_t getMaximumStackArgs(const ir::Function *func) {
   return maxStackArgs;
 }
 
-static bool isNeedStackForReturn(const ir::Function *func) {
-  if (!func) {
-    return false;
-  }
-  for (ir::BasicBlock *bb : *func) {
-    for (ir::Operation *op : *bb) {
-      if (dynamic_cast<ir::CallOp *>(op)) {
-        return true;
-      }
-    }
-  }
-  return false;
-}
-
 std::vector<mc::MCInst>
 RISCVISel::selectInstructions(const ir::Function *func) {
   if (!func) {
@@ -49,7 +35,7 @@ RISCVISel::selectInstructions(const ir::Function *func) {
   }
 
   std::vector<mc::MCInst> mcInsts;
-  instrInfo.resetMap();
+  instrInfo.resetState();
   // LV8
   // 1. Calculate stack slots maximally needed for function call arguments.
   const uint32_t maxStackArgs = getMaximumStackArgs(func);
@@ -65,10 +51,8 @@ RISCVISel::selectInstructions(const ir::Function *func) {
     }
   }
 
-  // 3. Determine if we need stack space for return address.
-  if (isNeedStackForReturn(func)) {
-    instrInfo.reserveRaStackSlot();
-  }
+  // 3. Determine if we need stack space for return address and frame pointer.
+  instrInfo.reserveRaAndFpStackSlots(func);
 
   // 4. Adjust the stack size for the function prologue.
   const uint32_t stackSize = instrInfo.getAlignedStackSize();

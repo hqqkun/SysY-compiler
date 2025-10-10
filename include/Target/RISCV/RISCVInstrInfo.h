@@ -6,6 +6,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "IR/Function.h"
 #include "IR/Operation.h"
 #include "IR/Value.h"
 #include "MC/MCInst.h"
@@ -93,10 +94,12 @@ public:
                     const uint32_t stackSize = 0);
   void emitLabel(std::string_view label, std::vector<mc::MCInst> &outInsts);
 
-  void resetMap() {
+  /// Reset the internal state before processing a new function.
+  void resetState() {
     value2RegMap.clear();
     value2StackSlotMap.clear();
     raStackOffset.reset();
+    fpStackOffset.reset();
     offset = 0;
   }
 
@@ -108,12 +111,7 @@ public:
     }
   }
 
-  void reserveRaStackSlot() {
-    assert(!raStackOffset.has_value() &&
-           "Return address stack offset is already set");
-    raStackOffset = offset;
-    offset += wordSize;
-  }
+  void reserveRaAndFpStackSlots(const ir::Function *func);
 
   void incrementStackOffset(uint32_t size) { offset += size; }
 
@@ -136,13 +134,13 @@ private:
                         std::vector<mc::MCInst> &outInsts);
   void emitEpilogue(std::vector<mc::MCInst> &outInsts,
                     const uint32_t stackSize);
-  void pushRa(std::vector<mc::MCInst> &outInsts);
-  void popRa(std::vector<mc::MCInst> &outInsts);
+  bool isNeedStackForRa(const ir::Function *func);
 
   // LV4: map each OpResult to a stack slot.
   std::unordered_map<ir::Value *, uint32_t> value2StackSlotMap;
   uint32_t offset = 0;                   // Current stack offset in bytes.
   std::optional<uint32_t> raStackOffset; // Stack offset for return address.
+  std::optional<uint32_t> fpStackOffset; // Stack offset for frame pointer.
 };
 
 std::string_view getRegisterName(Register reg);

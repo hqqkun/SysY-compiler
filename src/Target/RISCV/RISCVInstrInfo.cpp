@@ -92,10 +92,13 @@ static const std::unordered_map<std::type_index, OpHandler> opHandlers = {
      }},
 };
 
-static Register loadFromStack(Register temp, std::vector<mc::MCInst> &outInsts,
-                              uint32_t offset) {
+/// Load a value from the stack with a base register and offset into a temporary
+/// register.
+static Register loadFromStackWithBase(Register temp,
+                                      std::vector<mc::MCInst> &outInsts,
+                                      Register baseReg, uint32_t offset) {
   outInsts.push_back(
-      mc::MCInstBuilder(riscv::LW).addReg(temp).addMem(riscv::SP, offset));
+      mc::MCInstBuilder(riscv::LW).addReg(temp).addMem(baseReg, offset));
   return temp;
 }
 
@@ -234,6 +237,14 @@ void RISCVInstrInfo::lowerCallOp(ir::CallOp *callOp,
   // CALL function
   outInsts.push_back(
       mc::MCInstBuilder(riscv::CALL).addLabel(callOp->getFunctionName()));
+
+  // If the call has a return value, store it to the stack slot.
+  if (callOp->hasResult()) {
+    Value *result = callOp->getResult();
+    uint32_t resultSlot = getStackSlot(result);
+    outInsts.push_back(mc::MCInstBuilder(riscv::SW).addReg(riscv::A0).addMem(
+        riscv::SP, resultSlot));
+  }
 }
 
 /// Lower the given IR value to a given RISC-V register.
@@ -262,23 +273,40 @@ Register RISCVInstrInfo::lowerOperand(ir::Value *val, Register temp,
     }
     // Argument is passed on the stack.
     uint32_t offset = (index - kMaxArgRegisters) * wordSize;
-    return loadFromStack(temp, outInsts, offset);
+    return loadFromStackWithBase(temp, outInsts, riscv::FP, offset);
   }
 
-  return loadFromStack(temp, outInsts, getStackSlot(val));
+  return loadFromStackWithBase(temp, outInsts, riscv::SP, getStackSlot(val));
 }
 
-void RISCVInstrInfo::pushRa(std::vector<mc::MCInst> &outInsts) {
-  if (raStackOffset.has_value()) {
-    outInsts.push_back(mc::MCInstBuilder(riscv::SW).addReg(riscv::RA).addMem(
-        riscv::SP, *raStackOffset));
+bool RISCVInstrInfo::isNeedStackForRa(const ir::Function *func) {
+  assert(func && "Function is null");
+  for (ir::BasicBlock *bb : *func) {
+    for (ir::Operation *op : *bb) {
+      if (dynamic_cast<ir::CallOp *>(op)) {
+        return true;
+      }
+    }
   }
+  return false;
 }
 
-void RISCVInstrInfo::popRa(std::vector<mc::MCInst> &outInsts) {
-  if (raStackOffset.has_value()) {
-    outInsts.push_back(mc::MCInstBuilder(riscv::LW).addReg(riscv::RA).addMem(
-        riscv::SP, *raStackOffset));
+void RISCVInstrInfo::reserveRaAndFpStackSlots(const ir::Function *func) {
+  assert(func && "Function is null");
+
+  // Reserve stack slot for return address if needed.
+  if (isNeedStackForRa(func)) {
+    assert(!raStackOffset.has_value() &&
+           "Return address stack offset is already set");
+    raStackOffset = offset;
+    offset += wordSize;
+  }
+
+  if (func->getNumArgs() > kMaxArgRegisters) {
+    assert(!fpStackOffset.has_value() &&
+           "Frame pointer stack offset is already set");
+    fpStackOffset = offset;
+    offset += wordSize;
   }
 }
 
@@ -290,14 +318,38 @@ void RISCVInstrInfo::emitPrologue(std::vector<mc::MCInst> &outInsts,
                            .addReg(riscv::SP)
                            .addReg(riscv::SP)
                            .addImm(-static_cast<int32_t>(stackSize)));
-    pushRa(outInsts);
+    // Push return address and frame pointer if needed.
+    if (raStackOffset.has_value()) {
+      outInsts.push_back(mc::MCInstBuilder(riscv::SW).addReg(riscv::RA).addMem(
+          riscv::SP, *raStackOffset));
+    }
+    // Push frame pointer if needed.
+    if (fpStackOffset.has_value()) {
+      outInsts.push_back(mc::MCInstBuilder(riscv::SW).addReg(riscv::FP).addMem(
+          riscv::SP, *fpStackOffset));
+      // Set frame pointer to current stack pointer.
+      // addi fp, sp, stackSize
+      outInsts.push_back(mc::MCInstBuilder(riscv::ADDI)
+                             .addReg(riscv::FP)
+                             .addReg(riscv::SP)
+                             .addImm(static_cast<int32_t>(stackSize)));
+    }
   }
 }
 
 void RISCVInstrInfo::emitEpilogue(std::vector<mc::MCInst> &outInsts,
                                   const uint32_t stackSize) {
   if (stackSize > 0) {
-    popRa(outInsts);
+    // Pop return address.
+    if (raStackOffset.has_value()) {
+      outInsts.push_back(mc::MCInstBuilder(riscv::LW).addReg(riscv::RA).addMem(
+          riscv::SP, *raStackOffset));
+    }
+    // Pop frame pointer.
+    if (fpStackOffset.has_value()) {
+      outInsts.push_back(mc::MCInstBuilder(riscv::LW).addReg(riscv::FP).addMem(
+          riscv::SP, *fpStackOffset));
+    }
     // Restore stack pointer: addi sp, sp, stackSize
     outInsts.push_back(mc::MCInstBuilder(riscv::ADDI)
                            .addReg(riscv::SP)
