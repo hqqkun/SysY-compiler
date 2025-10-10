@@ -46,8 +46,7 @@ static std::optional<ir::Type *> ASTType2IRType(ir::IRContext &context,
   assert(false && "Unsupported AST type kind");
 }
 
-ir::Value *IRGen::dispatchAndConvert(ir::IRBuilder &builder,
-                                     ast::BaseAST *ast) {
+ir::Value *IRGen::dispatchAndConvert(ir::IRBuilder &builder, BaseAST *ast) {
   assert(ast && "AST node cannot be null");
   if (auto *expr = dynamic_cast<ExprAST *>(ast)) {
     return convertExpr(builder, expr);
@@ -119,7 +118,7 @@ ir::Value *IRGen::convertUnaryExpr(ir::IRBuilder &builder,
 }
 
 ir::Value *IRGen::convertBinaryExp(ir::IRBuilder &builder,
-                                   ast::BinaryExpAST *binaryExpAST) {
+                                   BinaryExpAST *binaryExpAST) {
   if (binaryExpAST->isSingle()) {
     return dispatchAndConvert(builder, binaryExpAST->singleExp.get());
   } else if (binaryExpAST->isComposite()) {
@@ -163,7 +162,7 @@ ir::Value *IRGen::convertBinaryExp(ir::IRBuilder &builder,
 }
 
 ir::Value *IRGen::convertLogicalBinaryExp(ir::IRBuilder &builder,
-                                          ast::BinaryExpAST *binaryExpAST) {
+                                          BinaryExpAST *binaryExpAST) {
   assert(binaryExpAST && "Binary expression AST cannot be null");
   auto op = binaryExpAST->binOp;
 
@@ -214,7 +213,7 @@ ir::Value *IRGen::convertLogicalBinaryExp(ir::IRBuilder &builder,
   return builder.create<ir::LoadOp>(result)->getResult();
 }
 
-ir::Value *IRGen::convertLval(ir::IRBuilder &builder, ast::LValAST *lvalAST) {
+ir::Value *IRGen::convertLval(ir::IRBuilder &builder, LValAST *lvalAST) {
   assert(lvalAST && "LValAST cannot be null");
   SymbolTable::Val lval = varTables.get(lvalAST->ident);
   if (std::holds_alternative<ir::Value *>(lval)) {
@@ -230,7 +229,7 @@ ir::Value *IRGen::convertLval(ir::IRBuilder &builder, ast::LValAST *lvalAST) {
 }
 
 ir::Value *IRGen::convertFuncCall(ir::IRBuilder &builder,
-                                  ast::FuncCallAST *funcCallAST) {
+                                  FuncCallAST *funcCallAST) {
   assert(funcCallAST && "FuncCallAST cannot be null");
   auto *funcDecl = dynamic_cast<ir::FunctionDecl *>(
       varTables.getDeclaration(funcCallAST->ident));
@@ -256,7 +255,7 @@ ir::Value *IRGen::convertFuncCall(ir::IRBuilder &builder,
 }
 
 ir::Value *IRGen::convertInitValExp(ir::IRBuilder &builder,
-                                    ast::InitValAST *initValAST) {
+                                    InitValAST *initValAST) {
   assert(initValAST && "InitValAST cannot be null");
   return dispatchAndConvert(builder, initValAST->exp.get());
 }
@@ -334,7 +333,7 @@ void IRGen::convertAssignStmt(ir::IRBuilder &builder,
   builder.create<ir::StoreOp>(rhsValue, lvalPtr);
 }
 
-void IRGen::convertIfStmt(ir::IRBuilder &builder, ast::IfStmtAST *ifStmtAST) {
+void IRGen::convertIfStmt(ir::IRBuilder &builder, IfStmtAST *ifStmtAST) {
   assert(ifStmtAST && "IfStmtAST cannot be null");
   ir::Value *cond = dispatchAndConvert(builder, ifStmtAST->cond.get());
 
@@ -368,7 +367,7 @@ void IRGen::convertIfStmt(ir::IRBuilder &builder, ast::IfStmtAST *ifStmtAST) {
 }
 
 void IRGen::convertWhileStmt(ir::IRBuilder &builder,
-                             ast::WhileStmtAST *whileStmtAST) {
+                             WhileStmtAST *whileStmtAST) {
   assert(whileStmtAST && "WhileStmtAST cannot be null");
   uint64_t nextID = getNextBlockId();
   ir::BasicBlock *entry =
@@ -403,7 +402,7 @@ void IRGen::convertWhileStmt(ir::IRBuilder &builder,
 }
 
 void IRGen::convertBreakStmt(ir::IRBuilder &builder,
-                             ast::BreakStmtAST *breakStmtAST) {
+                             BreakStmtAST *breakStmtAST) {
   assert(breakStmtAST && "BreakStmtAST cannot be null");
   assert(!loopStack.empty() && "Break statement not within a loop");
 
@@ -417,7 +416,7 @@ void IRGen::convertBreakStmt(ir::IRBuilder &builder,
 }
 
 void IRGen::convertContinueStmt(ir::IRBuilder &builder,
-                                ast::ContinueStmtAST *continueStmtAST) {
+                                ContinueStmtAST *continueStmtAST) {
   assert(continueStmtAST && "ContinueStmtAST cannot be null");
   assert(!loopStack.empty() && "Continue statement not within a loop");
 
@@ -431,7 +430,7 @@ void IRGen::convertContinueStmt(ir::IRBuilder &builder,
 }
 
 /// Convert declarations and definitions.
-void IRGen::convertDeclaration(ir::IRBuilder &builder, ast::DeclAST *declAST) {
+void IRGen::convertDeclaration(ir::IRBuilder &builder, DeclAST *declAST) {
   assert(declAST && "Declaration AST cannot be null");
   if (declAST->isVarDecl()) {
     convertVarDecl(builder, dynamic_cast<VarDeclAST *>(declAST->varDecl.get()));
@@ -442,7 +441,7 @@ void IRGen::convertDeclaration(ir::IRBuilder &builder, ast::DeclAST *declAST) {
   }
 }
 
-void IRGen::convertConstDecl(ast::ConstDeclAST *constDeclAST) {
+void IRGen::convertConstDecl(ConstDeclAST *constDeclAST) {
   assert(constDeclAST && "ConstDeclAST cannot be null");
   size_t size = constDeclAST->constDefs->size();
   for (size_t i = 0; i < size; ++i) {
@@ -452,7 +451,7 @@ void IRGen::convertConstDecl(ast::ConstDeclAST *constDeclAST) {
   }
 }
 
-void IRGen::convertConstDef(ast::ConstDefAST *constDefAST) {
+void IRGen::convertConstDef(ConstDefAST *constDefAST) {
   assert(constDefAST && "ConstDefAST cannot be null");
   auto *constInitVal =
       dynamic_cast<ConstInitValAST *>(constDefAST->initVal.get());
@@ -464,8 +463,7 @@ void IRGen::convertConstDef(ast::ConstDefAST *constDefAST) {
   varTables.setConstant(constDefAST->var, value);
 }
 
-void IRGen::convertVarDecl(ir::IRBuilder &builder,
-                           ast::VarDeclAST *varDeclAST) {
+void IRGen::convertVarDecl(ir::IRBuilder &builder, VarDeclAST *varDeclAST) {
   assert(varDeclAST && "VarDeclAST cannot be null");
   size_t size = varDeclAST->varDefs->size();
   for (size_t i = 0; i < size; ++i) {
@@ -474,8 +472,8 @@ void IRGen::convertVarDecl(ir::IRBuilder &builder,
   }
 }
 
-void IRGen::convertVarDef(ir::IRBuilder &builder, ast::VarDefAST *varDefAST,
-                          const ast::Type &bType) {
+void IRGen::convertVarDef(ir::IRBuilder &builder, VarDefAST *varDefAST,
+                          const Type &bType) {
   assert(varDefAST && "VarDefAST cannot be null");
 
   // 1. Create allocation.
@@ -523,7 +521,7 @@ void IRGen::createUnreachableBlock(ir::IRBuilder &builder) {
   builder.setInsertPoint(unreach);
 }
 
-ir::Function *IRGen::convertFuncDef(ast::FuncDefAST *funcDefAST) {
+ir::Function *IRGen::convertFuncDef(FuncDefAST *funcDefAST) {
   assert(funcDefAST && "Function definition AST cannot be null");
   auto funcType = convertFunctionType(*funcDefAST->getReturnType(),
                                       funcDefAST->getParamTypes());
@@ -632,7 +630,7 @@ void IRGen::addLibFuncDeclarations(ir::Module *module) {
   }
 }
 
-ir::Module *IRGen::generate(std::unique_ptr<ast::BaseAST> &ast) {
+ir::Module *IRGen::generate(std::unique_ptr<BaseAST> &ast) {
   assert(ast && "AST cannot be null");
   auto *compUnit = dynamic_cast<CompUnitAST *>(ast.get());
   assert(compUnit && "AST must be a compilation unit");
