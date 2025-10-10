@@ -523,7 +523,8 @@ ir::Function *IRGen::convertFuncDef(ast::FuncDefAST *funcDefAST) {
 
   ir::IRBuilder builder(context);
   builder.setCurrentFunction(function);
-  ir::BasicBlock *entryBlock = ir::BasicBlock::create(context, "entry");
+  ir::BasicBlock *entryBlock = ir::BasicBlock::create(
+      context, "entry" + std::to_string(getNextBlockId()));
   builder.setInsertPoint(entryBlock);
   // Enter a new scope for the function arguments.
   varTables.enterScope();
@@ -585,6 +586,7 @@ ir::Module *IRGen::generate(std::unique_ptr<ast::BaseAST> &ast) {
     ir::Function *function =
         convertFuncDef(dynamic_cast<FuncDefAST *>(funcDefPtr.get()));
     module->addFunction(function);
+    resetTempId();
   }
   // Exit the global scope.
   varTables.exitScope();
