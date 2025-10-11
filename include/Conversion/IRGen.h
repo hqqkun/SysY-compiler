@@ -23,7 +23,8 @@ using LoopStack = std::list<LoopPair>;
 class IRGen {
 public:
   explicit IRGen(ir::IRContext &ctx)
-      : context(ctx), interpreter(varTables), nextBlockId(0), nextTempId(0) {}
+      : context(ctx), interpreter(varTables), nextBlockId(0), nextTempId(0),
+        currentModule(nullptr) {}
   ir::Module *generate(std::unique_ptr<ast::BaseAST> &ast);
 
 private:
@@ -33,6 +34,7 @@ private:
   uint64_t nextBlockId;
   uint64_t nextTempId;
   LoopStack loopStack;
+  ir::Module *currentModule;
 
   /// Add library function declarations to the symbol table.
   void addLibFuncDeclarations(ir::Module *module);
@@ -61,12 +63,16 @@ private:
                            ast::ContinueStmtAST *continueStmtAST);
 
   /// Convert declarations and definitions.
-  void convertDeclaration(ir::IRBuilder &builder, ast::DeclAST *declAST);
+  void convertDeclaration(ir::IRBuilder &builder, ast::DeclAST *declAST,
+                          bool isGlobal = false);
   void convertConstDecl(ast::ConstDeclAST *constDeclAST);
-  void convertVarDecl(ir::IRBuilder &builder, ast::VarDeclAST *varDeclAST);
+  void convertVarDecl(ir::IRBuilder &builder, ast::VarDeclAST *varDeclAST,
+                      bool isGlobal = false);
   void convertConstDef(ast::ConstDefAST *constDefAST);
-  void convertVarDef(ir::IRBuilder &builder, ast::VarDefAST *varDefAST,
-                     const ast::Type &bType);
+  void convertLocalVarDef(ir::IRBuilder &builder, ast::VarDefAST *varDefAST,
+                          const ast::Type &bType);
+  void convertGlobalVarDef(ir::IRBuilder &builder, ast::VarDefAST *varDefAST,
+                           const ast::Type &bType);
 
   /// Convert an expression AST to an IR Value.
   ir::Value *convertExpr(ir::IRBuilder &builder, ast::ExprAST *exprAST);

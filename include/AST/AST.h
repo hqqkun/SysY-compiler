@@ -26,25 +26,25 @@ public:
 
 class CompUnitAST : public BaseAST {
 public:
-  std::unique_ptr<std::vector<ASTPtr>> funcDefs;
+  std::unique_ptr<std::vector<ASTPtr>> topLevelNodes;
   void dump() const override;
 
-  CompUnitAST(std::unique_ptr<std::vector<ASTPtr>> funcs)
-      : funcDefs(std::move(funcs)) {}
+  CompUnitAST(std::unique_ptr<std::vector<ASTPtr>> nodes)
+      : topLevelNodes(std::move(nodes)) {}
 };
 
 class FuncDefAST : public BaseAST {
 public:
-  ASTPtr retType;
+  TypePtr retType;
   std::string ident;
   std::unique_ptr<std::vector<FuncFParamPtr>> funcFParams;
   ASTPtr block;
   void dump() const override;
 
-  FuncDefAST(ASTPtr type, const std::string &name, ASTPtr b)
+  FuncDefAST(TypePtr type, const std::string &name, ASTPtr b)
       : retType(std::move(type)), ident(name), funcFParams(nullptr),
         block(std::move(b)) {}
-  FuncDefAST(ASTPtr type, const std::string &name,
+  FuncDefAST(TypePtr type, const std::string &name,
              std::unique_ptr<std::vector<FuncFParamPtr>> params, ASTPtr b)
       : retType(std::move(type)), ident(name), funcFParams(std::move(params)),
         block(std::move(b)) {}
@@ -65,12 +65,6 @@ public:
 
   FuncFParamAST(TypePtr t, const std::string &name)
       : type(std::move(t)), ident(name) {}
-};
-
-class FuncTypeAST : public BaseAST {
-public:
-  TypePtr type;
-  void dump() const override;
 };
 
 /// Decleration

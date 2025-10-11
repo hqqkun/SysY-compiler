@@ -44,17 +44,17 @@ void yyerror(std::unique_ptr<ast::BaseAST>& ast, const char* s);
 
 %type <op> UnaryOp MulOp AddOp RelOp EqOp LAndOp LOrOp
 
-%type <ast_val> FuncDef FuncType Block Stmt Decl ConstDecl VarDecl ConstDef VarDef ConstInitVal InitVal
+%type <ast_val> FuncDef Block Stmt Decl ConstDecl VarDecl ConstDef VarDef ConstInitVal InitVal
 %type <ast_val> EXP PrimaryExp UnaryExp MulExp AddExp RelExp EqExp LAndExp LOrExp ConstExp LVal
 %type <astVec> ConstDefList
 %type <astVec> VarDefList
-%type <astVec> FuncDefList
+%type <astVec> CompUnitList
 %type <blockItemVec> BlockItemList
 %type <funcFParamVec> FuncFParamList
 %type <funcFParam> FuncFParam
 %type <funcRParamVec> FuncRParamList
 %type <blockItem> BlockItem
-%type <type> BType
+%type <type> Type
 %type <int_val> Number
 
 %nonassoc THEN
@@ -64,53 +64,50 @@ void yyerror(std::unique_ptr<ast::BaseAST>& ast, const char* s);
 
 // Compilation unit
 CompUnit
-    : FuncDefList {
+    : CompUnitList {
       auto vec = std::unique_ptr<std::vector<ast::ASTPtr>>($1);
       auto comp_unit = std::make_unique<ast::CompUnitAST>(std::move(vec));
       ast = std::move(comp_unit);
     }
     ;
 
-FuncDefList
+CompUnitList
     : FuncDef {
       auto vec = new std::vector<ast::ASTPtr>();
       vec->emplace_back($1);
       $$ = vec;
     }
-    | FuncDefList FuncDef {
+    | Decl {
+      auto vec = new std::vector<ast::ASTPtr>();
+      vec->emplace_back($1);
+      $$ = vec;
+    }
+    | CompUnitList FuncDef {
+      auto vec = $1;
+      vec->emplace_back($2);
+      $$ = vec;
+    }
+    | CompUnitList Decl {
       auto vec = $1;
       vec->emplace_back($2);
       $$ = vec;
     }
     ;
 
-// FuncDef ::= FuncType IDENT '(' [FuncFParamList] ')' Block;
+// FuncDef ::= Type IDENT '(' [FuncFParamList] ')' Block;
 FuncDef
-    : FuncType IDENT '(' ')' Block {
-      auto funcType = std::unique_ptr<ast::BaseAST>($1);
+    : Type IDENT '(' ')' Block {
+      auto funcType = std::unique_ptr<ast::Type>($1);
       auto ident = *std::unique_ptr<std::string>($2);
       auto block = std::unique_ptr<ast::BaseAST>($5);
       $$ = new ast::FuncDefAST(std::move(funcType), ident, std::move(block));
     }
-    | FuncType IDENT '(' FuncFParamList ')' Block {
-      auto funcType = std::unique_ptr<ast::BaseAST>($1);
+    | Type IDENT '(' FuncFParamList ')' Block {
+      auto funcType = std::unique_ptr<ast::Type>($1);
       auto ident = *std::unique_ptr<std::string>($2);
       auto params = std::unique_ptr<std::vector<ast::FuncFParamPtr>>($4);
       auto block = std::unique_ptr<ast::BaseAST>($6);
       $$ = new ast::FuncDefAST(std::move(funcType), ident, std::move(params), std::move(block));
-    }
-    ;
-
-FuncType
-    : INT {
-      auto ast = new ast::FuncTypeAST();
-      ast->type = std::make_unique<ast::Type>(ast::BaseType::INT);
-      $$ = ast;
-    }
-    | VOID {
-      auto ast = new ast::FuncTypeAST();
-      ast->type = std::make_unique<ast::Type>(ast::BaseType::VOID);
-      $$ = ast;
     }
     ;
 
@@ -128,15 +125,18 @@ FuncFParamList
     ;
 
 FuncFParam
-    : BType IDENT {
+    : Type IDENT {
       auto type = std::unique_ptr<ast::Type>($1);
       auto ident = *std::unique_ptr<std::string>($2);
       $$ = new ast::FuncFParamAST(std::move(type), ident);
     }
 
-BType
+Type
     : INT {
       $$ = new ast::Type(ast::BaseType::INT);
+    }
+    | VOID {
+      $$ = new ast::Type(ast::BaseType::VOID);
     }
     ;
 
@@ -153,7 +153,7 @@ Decl
     ;
 
 ConstDecl
-    : CONST BType ConstDefList ';' {
+    : CONST Type ConstDefList ';' {
       auto type = std::unique_ptr<ast::Type>($2);
       auto defList = std::unique_ptr<std::vector<ast::ASTPtr>>($3);
       $$ = new ast::ConstDeclAST(std::move(type), std::move(defList));
@@ -174,7 +174,7 @@ ConstDefList
     ;
 
 VarDecl
-    : BType VarDefList ';' {
+    : Type VarDefList ';' {
       auto type = std::unique_ptr<ast::Type>($1);
       auto defList = std::unique_ptr<std::vector<ast::ASTPtr>>($2);
       $$ = new ast::VarDeclAST(std::move(type), std::move(defList));

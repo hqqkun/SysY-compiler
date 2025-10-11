@@ -110,11 +110,18 @@ ReturnOp::ReturnOp(IRContext &context, Value *retVal) {
   result = nullptr;
 }
 
-AllocOp::AllocOp(IRContext &context, const std::string &name, Type *allocType,
-                 bool isUserVar, size_t size)
-    : userVariable(isUserVar), allocSize(size), varName(name),
-      elemType(allocType) {
+LocalAlloc::LocalAlloc(IRContext &context, const std::string &name,
+                       Type *allocType, bool isUserVar, size_t size)
+    : AllocOp(name, allocType, size), userVariable(isUserVar) {
   assert(allocType && "AllocOp type cannot be null");
+  resultType = PointerType::get(context, allocType);
+  result = context.create<OpResult>(this);
+}
+
+GlobalAlloc::GlobalAlloc(IRContext &context, const std::string &var,
+                         Type *allocType, Value *initVal, size_t size)
+    : AllocOp(var, allocType, size), initValue(initVal) {
+  assert(allocType && "GlobalAlloc type cannot be null");
   resultType = PointerType::get(context, allocType);
   result = context.create<OpResult>(this);
 }
