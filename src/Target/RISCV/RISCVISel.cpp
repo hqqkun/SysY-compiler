@@ -70,10 +70,10 @@ RISCVISel::selectInstructions(const ir::Function *func) {
         instrInfo.lowerLoadOp(load, mcInsts);
       } else if (auto *store = dynamic_cast<ir::StoreOp *>(op)) {
         instrInfo.lowerStoreOp(store, mcInsts);
-      } else if (auto *alloc = dynamic_cast<ir::AllocOp *>(op)) {
-        // AllocOp does not generate any instructions directly.
+      } else if (auto *localAlloc = dynamic_cast<ir::LocalAlloc *>(op)) {
+        // LocalAlloc does not generate any instructions directly.
         // Stack slot is already allocated in the first pass.
-        (void)alloc; // Suppress unused variable warning.
+        (void)localAlloc; // Suppress unused variable warning.
       } else if (auto *branch = dynamic_cast<ir::CondBranchOp *>(op)) {
         instrInfo.lowerBranchOp(branch, mcInsts);
       } else if (auto *jump = dynamic_cast<ir::JumpOp *>(op)) {
