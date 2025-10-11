@@ -32,11 +32,11 @@ BlockItemAST::BlockItemAST(ASTPtr item) {
 
 void CompUnitAST::dump() const {
   std::cout << "CompUnitAST { ";
-  for (size_t i = 0; i < funcDefs->size(); ++i) {
+  for (size_t i = 0; i < topLevelNodes->size(); ++i) {
     if (i != 0) {
       std::cout << ", ";
     }
-    (*funcDefs)[i]->dump();
+    (*topLevelNodes)[i]->dump();
   }
   std::cout << " }" << std::endl;
 }
@@ -44,18 +44,12 @@ void CompUnitAST::dump() const {
 void FuncDefAST::dump() const {
   std::cout << "FuncDefAST { ";
   if (retType) {
-    retType->dump();
+    std::cout << toString(*retType.get());
   }
   std::cout << ", " << ident << ", ";
   if (block) {
     block->dump();
   }
-  std::cout << " }";
-}
-
-void FuncTypeAST::dump() const {
-  std::cout << "FuncTypeAST { ";
-  std::cout << toString(*type.get());
   std::cout << " }";
 }
 
@@ -303,12 +297,8 @@ void FuncFParamAST::dump() const {
 }
 
 const Type *FuncDefAST::getReturnType() const {
-  static const Type VOID_TYPE = Type(BaseType::VOID);
-  if (auto *funcType = dynamic_cast<FuncTypeAST *>(retType.get())) {
-    return funcType->type.get();
-  }
-  assert(false && "Return type is not FuncTypeAST");
-  return &VOID_TYPE; // Unreachable
+  assert(retType && "Return type is null");
+  return retType.get();
 }
 
 const Type *FuncDefAST::getParamType(size_t index) const {

@@ -178,7 +178,7 @@ ir::Value *IRGen::convertLogicalBinaryExp(ir::IRBuilder &builder,
   // The name here is irrelevant since it's a temporary variable.
   // IRPrinter will take care of printing it properly.
   ir::Value *result =
-      builder.create<ir::AllocOp>("", intType, false)->getResult();
+      builder.create<ir::LocalAlloc>("", intType, false)->getResult();
 
   uint64_t nextID = getNextBlockId();
   ir::BasicBlock *early = ir::BasicBlock::create(
@@ -430,10 +430,12 @@ void IRGen::convertContinueStmt(ir::IRBuilder &builder,
 }
 
 /// Convert declarations and definitions.
-void IRGen::convertDeclaration(ir::IRBuilder &builder, DeclAST *declAST) {
+void IRGen::convertDeclaration(ir::IRBuilder &builder, DeclAST *declAST,
+                               bool isGlobal) {
   assert(declAST && "Declaration AST cannot be null");
   if (declAST->isVarDecl()) {
-    convertVarDecl(builder, dynamic_cast<VarDeclAST *>(declAST->varDecl.get()));
+    convertVarDecl(builder, dynamic_cast<VarDeclAST *>(declAST->varDecl.get()),
+                   isGlobal);
   } else if (declAST->isConstDecl()) {
     convertConstDecl(dynamic_cast<ConstDeclAST *>(declAST->constDecl.get()));
   } else {
@@ -463,17 +465,22 @@ void IRGen::convertConstDef(ConstDefAST *constDefAST) {
   varTables.setConstant(constDefAST->var, value);
 }
 
-void IRGen::convertVarDecl(ir::IRBuilder &builder, VarDeclAST *varDeclAST) {
+void IRGen::convertVarDecl(ir::IRBuilder &builder, VarDeclAST *varDeclAST,
+                           bool isGlobal) {
   assert(varDeclAST && "VarDeclAST cannot be null");
   size_t size = varDeclAST->varDefs->size();
   for (size_t i = 0; i < size; ++i) {
     auto *varDef = dynamic_cast<VarDefAST *>((*varDeclAST->varDefs)[i].get());
-    convertVarDef(builder, varDef, *varDeclAST->bType.get());
+    if (isGlobal) {
+      convertGlobalVarDef(builder, varDef, *varDeclAST->bType.get());
+    } else {
+      convertLocalVarDef(builder, varDef, *varDeclAST->bType.get());
+    }
   }
 }
 
-void IRGen::convertVarDef(ir::IRBuilder &builder, VarDefAST *varDefAST,
-                          const Type &bType) {
+void IRGen::convertLocalVarDef(ir::IRBuilder &builder, VarDefAST *varDefAST,
+                               const Type &bType) {
   assert(varDefAST && "VarDefAST cannot be null");
 
   // 1. Create allocation.
@@ -482,7 +489,7 @@ void IRGen::convertVarDef(ir::IRBuilder &builder, VarDefAST *varDefAST,
   std::string varName = varDefAST->var + "_" + std::to_string(getNextTempId());
   ir::Type *allocType = ASTType2IRType(context, bType).value();
   ir::Value *alloc =
-      builder.create<ir::AllocOp>(varName, allocType, true)->getResult();
+      builder.create<ir::LocalAlloc>(varName, allocType, true)->getResult();
   varTables.setValue(varDefAST->var, alloc);
 
   // 2. If there is an initializer, evaluate it and store the value.
@@ -491,6 +498,27 @@ void IRGen::convertVarDef(ir::IRBuilder &builder, VarDefAST *varDefAST,
         dispatchAndConvert(builder, varDefAST->initVal.get());
     builder.create<ir::StoreOp>(initValue, alloc);
   }
+}
+
+void IRGen::convertGlobalVarDef(ir::IRBuilder &builder, VarDefAST *varDefAST,
+                                const Type &bType) {
+  assert(varDefAST && "VarDefAST cannot be null");
+
+  // 1. Create allocation.
+  ir::Type *allocType = ASTType2IRType(context, bType).value();
+  ir::Value *initValue = nullptr;
+  if (varDefAST->initVal) {
+    // The builder here is only used to dispatch and convert the initializer.
+    // We assume the initializer is a constant expression for global variables.
+    initValue = dispatchAndConvert(builder, varDefAST->initVal.get());
+  }
+  std::string varName = varDefAST->var;
+  ir::GlobalAlloc *alloc =
+      ir::GlobalAlloc::create(context, varName, allocType, initValue);
+  ir::GlobalVarDecl *varDecl =
+      ir::GlobalVarDecl::create(context, varName, alloc);
+  currentModule->addDeclaration(varDecl);
+  varTables.setValue(varName, alloc->getResult());
 }
 
 void IRGen::convertBlock(ir::IRBuilder &builder, BlockAST *blockAST) {
@@ -576,7 +604,7 @@ void IRGen::prepareFunctionArgs(ir::IRBuilder &builder,
       continue;
     }
     ir::Value *alloc =
-        builder.create<ir::AllocOp>("", type, false)->getResult();
+        builder.create<ir::LocalAlloc>("", type, false)->getResult();
     // Mapping the argument to the allocation.
     varTables.setValue(arg->getName(), alloc);
     // 2. Store the argument value into the allocation.
@@ -634,24 +662,31 @@ ir::Module *IRGen::generate(std::unique_ptr<BaseAST> &ast) {
   assert(ast && "AST cannot be null");
   auto *compUnit = dynamic_cast<CompUnitAST *>(ast.get());
   assert(compUnit && "AST must be a compilation unit");
-  ir::Module *module = ir::Module::create(context);
+  currentModule = ir::Module::create(context);
 
   // Create a global scope for the compilation unit.
   varTables.enterScope();
 
   // Add built-in library function declarations.
-  addLibFuncDeclarations(module);
+  addLibFuncDeclarations(currentModule);
 
-  for (auto &funcDefPtr : *compUnit->funcDefs) {
-    ir::Function *function =
-        convertFuncDef(dynamic_cast<FuncDefAST *>(funcDefPtr.get()));
-    module->addFunction(function);
-    resetTempId();
+  for (auto &node : *compUnit->topLevelNodes) {
+    if (auto *func = dynamic_cast<FuncDefAST *>(node.get())) {
+      ir::Function *function = convertFuncDef(func);
+      currentModule->addFunction(function);
+      resetTempId();
+    } else if (auto *decl = dynamic_cast<DeclAST *>(node.get())) {
+      ir::IRBuilder builder(context);
+      // Global declarations.
+      convertDeclaration(builder, decl, true);
+    } else {
+      assert(false && "Unknown top-level node type");
+    }
   }
   // Exit the global scope.
   varTables.exitScope();
 
-  return module;
+  return currentModule;
 }
 
 } // namespace conversion
