@@ -10,6 +10,8 @@
 
 namespace conversion {
 
+constexpr std::string_view kZeroInitStr = "zeroinit";
+
 static void printAllocPrefix(std::ostream &os, bool isUserVariable) {
   if (isUserVariable) {
     os << "@";
@@ -26,6 +28,9 @@ void IRPrinter::printModule(ir::Module *module) {
     if (decl->isFunction()) {
       auto *funcDecl = static_cast<ir::FunctionDecl *>(decl);
       printFunctionDeclaration(funcDecl);
+    } else if (decl->isGlobalVar()) {
+      auto *varDecl = static_cast<ir::GlobalVarDecl *>(decl);
+      printGlobalVarDeclaration(varDecl);
     }
   }
   if (module->getDeclarations().size()) {
@@ -75,7 +80,7 @@ void IRPrinter::printOperation(ir::Operation *op, OpResultMap &resultMap) {
   os << "\t"; // Create indent.
 
   // Handle different operation types for printing
-  if (auto *allocOp = dynamic_cast<ir::AllocOp *>(op)) {
+  if (auto *allocOp = dynamic_cast<ir::LocalAlloc *>(op)) {
     printAllocOperation(allocOp, resultMap);
     return;
   }
@@ -150,14 +155,14 @@ void IRPrinter::printCallOperation(ir::CallOp *callOp, OpResultMap &resultMap) {
 }
 
 /// Specialized function to print AllocOp with variable names.
-void IRPrinter::printAllocOperation(ir::AllocOp *allocOp,
+void IRPrinter::printAllocOperation(ir::LocalAlloc *allocOp,
                                     OpResultMap &resultMap) {
   assert(allocOp && "AllocOp cannot be null");
   bool isUserVar = allocOp->isUserVariable();
   printAllocPrefix(os, isUserVar);
   if (isUserVar) {
     // @varName = alloc type
-    allocNames[allocOp->getResult()] = allocOp->getVarName();
+    AddAllocName(allocOp->getResult(), allocOp->getVarName());
     os << allocOp->getVarName();
   } else {
     // For non-user variables, assign a unique name using the result ID.
@@ -166,7 +171,7 @@ void IRPrinter::printAllocOperation(ir::AllocOp *allocOp,
     os << id;
   }
   os << " = " << allocOp->getOpName() << " ";
-  printBasicType(allocOp->getAllocType());
+  printBasicType(allocOp->getElementType());
   os << std::endl;
 }
 
@@ -179,8 +184,9 @@ void IRPrinter::printOperand(ir::Value *operand, OpResultMap &resultMap) {
     ir::OpResult *opRes = static_cast<ir::OpResult *>(operand);
 
     // Check if it's from an AllocOp to print variable name.
-    if (allocNames.find(opRes) != allocNames.end()) {
-      os << "@" << allocNames[opRes];
+    std::optional<std::string> allocName = getAllocName(opRes);
+    if (allocName.has_value()) {
+      os << "@" << allocName.value();
       return;
     }
     uint64_t id = resultMap.getId(opRes);
@@ -242,6 +248,56 @@ void IRPrinter::printFunctionDeclaration(ir::FunctionDecl *funcDecl) {
   os << "decl @" << funcDecl->getIdent();
   printFunctionType(funcDecl->getFunctionType(), {}, false);
   os << std::endl;
+}
+
+void IRPrinter::printGlobalVarDeclaration(ir::GlobalVarDecl *varDecl) {
+  assert(varDecl && "GlobalVarDecl cannot be null");
+  ir::GlobalAlloc *allocOp = varDecl->getAllocation();
+  assert(allocOp && "GlobalVarDecl's allocation cannot be null");
+
+  // IMPORTANT: Map the allocation result to the variable name for later use.
+  // Global variables must be user variables.
+  AddAllocName(allocOp->getResult(), varDecl->getIdent(), true);
+
+  // global @var = alloc i32, (init_value | zeroinit)
+  os << "global @" << varDecl->getIdent() << " = " << allocOp->getOpName()
+     << " ";
+  printBasicType(allocOp->getElementType());
+  os << ", ";
+  if (allocOp->getInitValue()) {
+    OpResultMap map; // Dummy map for printing the init value.
+    printOperand(allocOp->getInitValue(), map);
+  } else {
+    os << kZeroInitStr;
+  }
+  os << std::endl;
+}
+
+void IRPrinter::AddAllocName(ir::OpResult *result, const std::string &name,
+                             bool isGlobal) {
+  assert(result && "OpResult cannot be null");
+
+  auto &allocNames = isGlobal ? globalAllocNames : LocalallocNames;
+
+  assert(allocNames.find(result) == allocNames.end() &&
+         "Variable already has a name assigned");
+  allocNames[result] = name;
+}
+
+std::optional<std::string> IRPrinter::getAllocName(ir::OpResult *result) const {
+  assert(result && "OpResult cannot be null");
+
+  // First check local alloc names, then global alloc names.
+  // As the local scope shadows the global scope.
+  auto it = LocalallocNames.find(result);
+  if (it != LocalallocNames.end()) {
+    return it->second;
+  }
+  it = globalAllocNames.find(result);
+  if (it != globalAllocNames.end()) {
+    return it->second;
+  }
+  return std::nullopt;
 }
 
 } // namespace conversion

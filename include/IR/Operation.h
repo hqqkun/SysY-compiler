@@ -134,20 +134,44 @@ public:
 
 class AllocOp : public Operation {
 public:
-  explicit AllocOp(IRContext &context, const std::string &var, Type *allocType,
-                   bool isUserVar = true, size_t size = 1);
+  explicit AllocOp(const std::string &name, Type *type, size_t size = 1)
+      : varName(name), elemType(type), allocSize(size) {}
   std::string_view getOpName() const override { return "alloc"; }
+  Type *getElementType() const { return elemType; }
   const std::string &getVarName() const { return varName; }
-  Type *getAllocType() const { return elemType; }
+
+protected:
+  std::string varName;
+  Type *elemType;
+  size_t allocSize;
+};
+
+class LocalAlloc : public AllocOp {
+public:
+  explicit LocalAlloc(IRContext &context, const std::string &var,
+                      Type *allocType, bool isUserVar = true, size_t size = 1);
   bool isUserVariable() const { return userVariable; }
 
 private:
   /// Indicates whether this allocation is for a user-defined variable.
   /// If false, it may be for a temporary or internal use.
   bool userVariable;
-  size_t allocSize;
-  std::string varName;
-  Type *elemType;
+};
+
+class GlobalAlloc : public AllocOp {
+public:
+  explicit GlobalAlloc(IRContext &context, const std::string &var,
+                       Type *allocType, Value *initVal = nullptr,
+                       size_t size = 1);
+  static GlobalAlloc *create(IRContext &context, const std::string &var,
+                             Type *allocType, Value *initVal = nullptr,
+                             size_t size = 1) {
+    return context.create<GlobalAlloc>(var, allocType, initVal, size);
+  }
+  Value *getInitValue() const { return initValue; }
+
+private:
+  Value *initValue; // can be nullptr
 };
 
 class LoadOp : public Operation {
