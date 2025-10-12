@@ -1,4 +1,5 @@
 #include <cassert>
+#include <string_view>
 #include <vector>
 
 #include "CodeGen/AsmPrinter.h"
@@ -9,11 +10,17 @@
 namespace target {
 namespace riscv {
 
+constexpr std::string_view kDataSection = ".data";
+constexpr std::string_view kTextSection = ".text";
+constexpr std::string_view kGlobalDirective = ".globl";
+constexpr std::string_view kWordDirective = ".word";
+constexpr std::string_view kZeroInit = ".zero";
+
 void RISCVAsmPrinter::emitAsmHeader(const ir::Function *func) {
   assert(func && "Function is null");
-  out << "\t.text\n";
+  out << "\t" << kTextSection << std::endl;
   // Assume the function is global for simplicity.
-  out << "\t.globl " << func->getName() << "\n";
+  out << "\t" << kGlobalDirective << " " << func->getName() << std::endl;
 }
 
 void RISCVAsmPrinter::emitFunction(const ir::Function *func,
@@ -64,6 +71,33 @@ void RISCVAsmPrinter::emitOperands(const std::vector<mc::MCOperand> &operands) {
       assert(false && "Unsupported operand type");
     }
   }
+}
+
+void RISCVAsmPrinter::emitGlobalVarDecl(const ir::GlobalVarDecl *varDecl) {
+  assert(varDecl && "GlobalVarDecl is null");
+  ir::GlobalAlloc *alloc = varDecl->getAllocation();
+  assert(alloc && "GlobalAlloc is null");
+  size_t allocSize = alloc->getAllocSize();
+  // TODO: Support array global allocation.
+  assert(allocSize == 1 && "Only single element global alloc supported");
+
+  const std::string &varName = varDecl->getIdent();
+  out << "\t" << kDataSection << std::endl;
+  out << "\t" << kGlobalDirective << " " << varName << std::endl;
+  emitLabel(varName);
+
+  // Print initial value if exists.
+  ir::Value *initValue = alloc->getInitValue();
+  if (initValue) {
+    assert(initValue->getType()->isInteger() &&
+           "Only integer initial value is supported");
+    ir::Integer *intVal = static_cast<ir::Integer *>(initValue);
+    out << "\t" << kWordDirective << " " << intVal->getValue() << std::endl;
+  } else {
+    out << "\t" << kZeroInit << " " << allocSize * wordSize << std::endl;
+  }
+
+  out << std::endl;
 }
 
 } // namespace riscv

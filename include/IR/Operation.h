@@ -139,6 +139,7 @@ public:
   std::string_view getOpName() const override { return "alloc"; }
   Type *getElementType() const { return elemType; }
   const std::string &getVarName() const { return varName; }
+  size_t getAllocSize() const { return allocSize; }
 
 protected:
   std::string varName;

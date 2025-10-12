@@ -8,6 +8,16 @@ void RISCVTargetMachine::codeGen(const ir::Module *module) {
     return;
   }
 
+  // Emit global variable declarations.
+  for (ir::Declaration *decl : module->getDeclarations()) {
+    if (decl->isGlobalVar()) {
+      auto *varDecl = static_cast<ir::GlobalVarDecl *>(decl);
+      asmPrinter.emitGlobalVarDecl(varDecl);
+      isel.addGlobalVariable(varDecl->getAllocation()->getResult(),
+                             varDecl->getIdent());
+    }
+  }
+
   for (const ir::Function *func : *module) {
     if (!func) {
       continue;
