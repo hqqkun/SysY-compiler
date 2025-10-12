@@ -16,6 +16,7 @@ public:
   void emitFunction(const ir::Function *func,
                     const std::vector<mc::MCInst> &instrs);
   void emitInstructions(const std::vector<mc::MCInst> &instrs) override;
+  void emitGlobalVarDecl(const ir::GlobalVarDecl *varDecl) override;
 
 private:
   void emitOperands(const std::vector<mc::MCOperand> &operands);

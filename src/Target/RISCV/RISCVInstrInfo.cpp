@@ -102,6 +102,26 @@ static Register loadFromStackWithBase(Register temp,
   return temp;
 }
 
+/// Load a value from a global variable into a temporary register.
+static void loadFromGlobalVar(Register temp, std::vector<mc::MCInst> &outInsts,
+                              const std::string &varName) {
+  // Load address of the global variable into `temp`.
+  outInsts.push_back(
+      mc::MCInstBuilder(riscv::LA).addReg(temp).addLabel(varName));
+  // Load the value from the address in `temp` into `temp`.
+  outInsts.push_back(mc::MCInstBuilder(riscv::LW).addReg(temp).addMem(temp, 0));
+}
+
+static void storeToGlobalVar(Register src, Register temp,
+                             std::vector<mc::MCInst> &outInsts,
+                             const std::string &varName) {
+  // Load address of the global variable into `temp`.
+  outInsts.push_back(
+      mc::MCInstBuilder(riscv::LA).addReg(temp).addLabel(varName));
+  // Store the value from `src` into the address in `temp`.
+  outInsts.push_back(mc::MCInstBuilder(riscv::SW).addReg(src).addMem(temp, 0));
+}
+
 void RISCVInstrInfo::lowerReturn(ReturnOp *retOp,
                                  std::vector<mc::MCInst> &outInsts,
                                  const uint32_t stackSize) {
@@ -153,26 +173,29 @@ void RISCVInstrInfo::lowerLoadOp(ir::LoadOp *loadOp,
                                  std::vector<mc::MCInst> &outInsts) {
   assert(loadOp && "LoadOp is null");
   Value *ptr = loadOp->getPointer();
+  Register src = lowerOperand(ptr, Register::T0, outInsts);
   Value *result = loadOp->getResult();
-  uint32_t offsetSlot = getStackSlot(ptr);
   uint32_t resultSlot = getStackSlot(result);
-  outInsts.push_back(mc::MCInstBuilder(riscv::LW)
-                         .addReg(Register::T0)
-                         .addMem(riscv::SP, offsetSlot));
-  outInsts.push_back(mc::MCInstBuilder(riscv::SW)
-                         .addReg(Register::T0)
-                         .addMem(riscv::SP, resultSlot));
+  outInsts.push_back(
+      mc::MCInstBuilder(riscv::SW).addReg(src).addMem(riscv::SP, resultSlot));
 }
 
 void RISCVInstrInfo::lowerStoreOp(ir::StoreOp *storeOp,
                                   std::vector<mc::MCInst> &outInsts) {
   assert(storeOp && "StoreOp is null");
   Value *val = storeOp->getValue();
-  Value *ptr = storeOp->getPointer();
-  uint32_t ptrSlot = getStackSlot(ptr);
   Register valReg = lowerOperand(val, Register::T0, outInsts);
-  outInsts.push_back(
-      mc::MCInstBuilder(riscv::SW).addReg(valReg).addMem(riscv::SP, ptrSlot));
+
+  Value *ptr = storeOp->getPointer();
+  if (isGlobalVariable(ptr)) {
+    const std::string &varName = getGlobalVarName(ptr);
+    Register tempReg = (valReg != riscv::T0) ? riscv::T0 : riscv::T1;
+    storeToGlobalVar(valReg, tempReg, outInsts, varName);
+  } else {
+    uint32_t ptrSlot = getStackSlot(ptr);
+    outInsts.push_back(
+        mc::MCInstBuilder(riscv::SW).addReg(valReg).addMem(riscv::SP, ptrSlot));
+  }
 }
 
 void RISCVInstrInfo::lowerBranchOp(ir::CondBranchOp *brOp,
@@ -261,6 +284,13 @@ Register RISCVInstrInfo::lowerOperand(ir::Value *val, Register temp,
     }
     // LI temp, imm
     outInsts.push_back(mc::MCInstBuilder(riscv::LI).addReg(temp).addImm(imm));
+    return temp;
+  }
+
+  // Check if the value is a global variable.
+  if (isGlobalVariable(val)) {
+    const std::string &varName = getGlobalVarName(val);
+    loadFromGlobalVar(temp, outInsts, varName);
     return temp;
   }
 
@@ -382,11 +412,11 @@ std::string_view getRegisterName(Register reg) {
 std::string_view getOpTypeName(OpType op) {
   static const std::unordered_map<OpType, std::string_view> opNames = {
       {ADD, "add"},   {ADDI, "addi"}, {AND, "and"},   {BNEZ, "bnez"},
-      {CALL, "call"}, {DIV, "div"},   {JUMP, "j"},    {LI, "li"},
-      {LW, "lw"},     {MUL, "mul"},   {MV, "mv"},     {OR, "or"},
-      {REM, "rem"},   {RET, "ret"},   {SEQZ, "seqz"}, {SGT, "sgt"},
-      {SLT, "slt"},   {SNEZ, "snez"}, {SUB, "sub"},   {SW, "sw"},
-      {XOR, "xor"}};
+      {CALL, "call"}, {DIV, "div"},   {JUMP, "j"},    {LA, "la"},
+      {LI, "li"},     {LW, "lw"},     {MUL, "mul"},   {MV, "mv"},
+      {OR, "or"},     {REM, "rem"},   {RET, "ret"},   {SEQZ, "seqz"},
+      {SGT, "sgt"},   {SLT, "slt"},   {SNEZ, "snez"}, {SUB, "sub"},
+      {SW, "sw"},     {XOR, "xor"}};
 
   if (auto it = opNames.find(op); it != opNames.end()) {
     return it->second;

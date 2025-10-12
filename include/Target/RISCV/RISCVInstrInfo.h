@@ -25,6 +25,7 @@ enum OpType {
   CALL, // Call a function
   DIV,
   JUMP,
+  LA,    // Load Address
   LABEL, // Label
   LI,    // Load Immediate
   LW,    // Load Word
@@ -94,9 +95,30 @@ public:
                     const uint32_t stackSize = 0);
   void emitLabel(std::string_view label, std::vector<mc::MCInst> &outInsts);
 
+  // LV8: Add a global variable to the set.
+  void addGlobalVariable(ir::Value *val, const std::string &name) {
+    assert(val && "Global variable value cannot be null");
+    assert(globalVarNames.find(val) == globalVarNames.end() &&
+           "Global variable already exists");
+    globalVarNames[val] = name;
+  }
+
+  bool isGlobalVariable(ir::Value *val) const {
+    assert(val && "Value cannot be null");
+    return globalVarNames.find(val) != globalVarNames.end();
+  }
+
+  const std::string &getGlobalVarName(ir::Value *val) const {
+    assert(val && "Value cannot be null");
+    auto it = globalVarNames.find(val);
+    assert(it != globalVarNames.end() && "Global variable not found");
+    return it->second;
+  }
+
   /// Reset the internal state before processing a new function.
+  /// Note: globalVarNames is not cleared here because global variables
+  /// persist across functions and are program-scoped.
   void resetState() {
-    value2RegMap.clear();
     value2StackSlotMap.clear();
     raStackOffset.reset();
     fpStackOffset.reset();
@@ -129,7 +151,6 @@ public:
   }
 
 private:
-  std::unordered_map<ir::Value *, Register> value2RegMap;
   Register lowerOperand(ir::Value *val, Register temp,
                         std::vector<mc::MCInst> &outInsts);
   void emitEpilogue(std::vector<mc::MCInst> &outInsts,
@@ -138,6 +159,11 @@ private:
 
   // LV4: map each OpResult to a stack slot.
   std::unordered_map<ir::Value *, uint32_t> value2StackSlotMap;
+  // LV8: global variables.
+  /// Since global variables are not function-scoped, we need to
+  /// track them separately. Before lowering any functions, we need to
+  /// ensure that all global variables are inserted into the map.
+  std::unordered_map<ir::Value *, std::string> globalVarNames;
   uint32_t offset = 0;                   // Current stack offset in bytes.
   std::optional<uint32_t> raStackOffset; // Stack offset for return address.
   std::optional<uint32_t> fpStackOffset; // Stack offset for frame pointer.

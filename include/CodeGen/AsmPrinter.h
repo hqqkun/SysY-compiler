@@ -4,6 +4,7 @@
 #include <ostream>
 #include <vector>
 
+#include "IR/Declaration.h"
 #include "IR/Function.h"
 #include "MC/MCInst.h"
 
@@ -17,7 +18,8 @@ public:
   //! Only support `1` function now.
   virtual void emitAsmHeader(const ir::Function *func) = 0;
   virtual void emitInstructions(const std::vector<mc::MCInst> &instrs) = 0;
-  virtual void emitLabel(std::string label) { out << label << ":\n"; }
+  virtual void emitLabel(const std::string &label) { out << label << ":\n"; }
+  virtual void emitGlobalVarDecl(const ir::GlobalVarDecl *varDecl) = 0;
 
 protected:
   std::ostream &out;
