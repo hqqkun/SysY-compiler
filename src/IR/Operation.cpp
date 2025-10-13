@@ -120,8 +120,21 @@ LocalAlloc::LocalAlloc(IRContext &context, const std::string &name,
 
 GlobalAlloc::GlobalAlloc(IRContext &context, const std::string &var,
                          Type *allocType, Value *initVal, size_t size)
-    : AllocOp(var, allocType, size), initValue(initVal) {
+    : AllocOp(var, allocType, size), initValue(initVal), initValues(),
+      kind(Kind::SINGLE) {
   assert(allocType && "GlobalAlloc type cannot be null");
+  resultType = PointerType::get(context, allocType);
+  result = context.create<OpResult>(this);
+}
+
+GlobalAlloc::GlobalAlloc(IRContext &context, const std::string &var,
+                         Type *allocType, const std::list<Value *> &initVals,
+                         size_t size)
+    : AllocOp(var, allocType, size), initValue(nullptr), initValues(initVals),
+      kind(Kind::MULTIPLE) {
+  assert(allocType && "GlobalAlloc type cannot be null");
+  assert(allocType->isArray() &&
+         "GlobalAlloc with multiple initial values must be an array type");
   resultType = PointerType::get(context, allocType);
   result = context.create<OpResult>(this);
 }
@@ -188,5 +201,22 @@ CallOp::CallOp(IRContext &context, const std::string &funcName,
     result = context.create<OpResult>(this);
   }
 }
+
+GetElemPtrOp::GetElemPtrOp(IRContext &context, Value *base, Value *index) {
+  assert(base && "GetElemPtrOp base cannot be null");
+  assert(index && "GetElemPtrOp index cannot be null");
+  assert(base->getType()->isPointer() &&
+         "GetElemPtrOp base must be a pointer type");
+  Type *arrType = static_cast<PointerType *>(base->getType())->getPointeeType();
+  assert(arrType && arrType->isArray() &&
+         "GetElemPtrOp base must point to an array type");
+  operands.emplace_back(base);
+  operands.emplace_back(index);
+  base->addUser(this);
+  index->addUser(this);
+  resultType = PointerType::get(
+      context, static_cast<ArrayType *>(arrType)->getElementType());
+  result = context.create<OpResult>(this);
+};
 
 } // namespace ir

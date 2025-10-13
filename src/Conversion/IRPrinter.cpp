@@ -237,6 +237,11 @@ void IRPrinter::printBasicType(ir::Type *type) {
     ir::PointerType *ptrType = static_cast<ir::PointerType *>(type);
     os << "*";
     printBasicType(ptrType->getPointeeType());
+  } else if (type->isArray()) {
+    ir::ArrayType *arrayType = static_cast<ir::ArrayType *>(type);
+    os << "[";
+    printBasicType(arrayType->getElementType());
+    os << ", " << arrayType->getSize() << "]";
   } else {
     assert(false && "Unknown type");
   }
@@ -264,13 +269,54 @@ void IRPrinter::printGlobalVarDeclaration(ir::GlobalVarDecl *varDecl) {
      << " ";
   printBasicType(allocOp->getElementType());
   os << ", ";
-  if (allocOp->getInitValue()) {
-    OpResultMap map; // Dummy map for printing the init value.
-    printOperand(allocOp->getInitValue(), map);
+
+  OpResultMap dummyMap; // Dummy map for printing the init value.
+  if (allocOp->isSingle()) {
+    printSingleInitializer(allocOp, dummyMap);
+  } else {
+    printArrayInitializer(allocOp, dummyMap);
+  }
+  os << std::endl;
+}
+
+void IRPrinter::printSingleInitializer(ir::GlobalAlloc *allocOp,
+                                       OpResultMap &map) {
+  assert(allocOp && "GlobalAlloc cannot be null");
+
+  ir::Value *initValue = allocOp->getInitValue();
+  if (initValue) {
+    printOperand(initValue, map);
   } else {
     os << kZeroInitStr;
   }
-  os << std::endl;
+}
+
+void IRPrinter::printArrayInitializer(ir::GlobalAlloc *allocOp,
+                                      OpResultMap &map) {
+  assert(allocOp && "GlobalAlloc cannot be null");
+  const auto &initValues = allocOp->getInitValues();
+  auto *arrayType = dynamic_cast<ir::ArrayType *>(allocOp->getElementType());
+  assert(arrayType && "Multi-value initializer must be array type");
+
+  if (initValues.empty()) {
+    os << kZeroInitStr;
+    return;
+  }
+
+  size_t arraySize = arrayType->getSize();
+  os << "{";
+  // Print all provided initial values.
+  size_t printedCount = 0;
+  for (ir::Value *init : initValues) {
+    if (printedCount > 0)
+      os << ", ";
+    printOperand(init, map);
+    printedCount++;
+  }
+  for (size_t i = printedCount; i < arraySize; ++i) {
+    os << ", 0";
+  }
+  os << "}";
 }
 
 void IRPrinter::AddAllocName(ir::OpResult *result, const std::string &name,

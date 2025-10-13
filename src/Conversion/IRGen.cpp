@@ -1,4 +1,5 @@
 #include <cassert>
+#include <functional>
 #include <string>
 #include <variant>
 
@@ -218,7 +219,18 @@ ir::Value *IRGen::convertLval(ir::IRBuilder &builder, LValAST *lvalAST) {
   SymbolTable::Val lval = varTables.get(lvalAST->ident);
   if (std::holds_alternative<ir::Value *>(lval)) {
     ir::Value *lvalPtr = std::get<ir::Value *>(lval);
-    return builder.create<ir::LoadOp>(lvalPtr)->getResult();
+
+    // If there are indices, we need to compute the address using GetElemPtrOp.
+    if (lvalAST->isScalar()) {
+      return builder.create<ir::LoadOp>(lvalPtr)->getResult();
+    }
+    assert(lvalAST->isArray() && "LVal must be either scalar or array");
+    ir::Value *idx =
+        dispatchAndConvert(builder, lvalAST->arrayIndex->exp.get());
+    return builder
+        .create<ir::LoadOp>(
+            builder.create<ir::GetElemPtrOp>(lvalPtr, idx)->getResult())
+        ->getResult();
   } else {
     assert(std::holds_alternative<int32_t>(lval) &&
            "LVal symbol table entry must contain either a variable pointer or "
@@ -326,11 +338,29 @@ void IRGen::convertAssignStmt(ir::IRBuilder &builder,
   SymbolTable::Val lval = varTables.get(lvalAST->ident);
   assert(std::holds_alternative<ir::Value *>(lval) &&
          "LVal must be a variable in assignment");
+  ir::Value *targetPtr = std::get<ir::Value *>(lval);
+  assert(targetPtr && "Target pointer cannot be null in assignment");
 
-  ir::Value *lvalPtr = std::get<ir::Value *>(lval);
+  // Get right-hand side value and store it to the target.
   ir::Value *rhsValue = dispatchAndConvert(builder, assignStmtAST->exp.get());
   assert(rhsValue && "Right-hand side value cannot be null in assignment");
-  builder.create<ir::StoreOp>(rhsValue, lvalPtr);
+
+  if (lvalAST->isScalar()) {
+    builder.create<ir::StoreOp>(rhsValue, targetPtr);
+    return;
+  }
+
+  // Array assignment.
+  if (lvalAST->isArray()) {
+    ir::Value *idx =
+        dispatchAndConvert(builder, lvalAST->arrayIndex->exp.get());
+    assert(idx && "Array index cannot be null in assignment");
+    ir::Value *elemPtr =
+        builder.create<ir::GetElemPtrOp>(targetPtr, idx)->getResult();
+    builder.create<ir::StoreOp>(rhsValue, elemPtr);
+    return;
+  }
+  assert(false && "LVal must be either scalar or array in assignment");
 }
 
 void IRGen::convertIfStmt(ir::IRBuilder &builder, IfStmtAST *ifStmtAST) {
@@ -437,32 +467,84 @@ void IRGen::convertDeclaration(ir::IRBuilder &builder, DeclAST *declAST,
     convertVarDecl(builder, dynamic_cast<VarDeclAST *>(declAST->varDecl.get()),
                    isGlobal);
   } else if (declAST->isConstDecl()) {
-    convertConstDecl(dynamic_cast<ConstDeclAST *>(declAST->constDecl.get()));
+    convertConstDecl(builder,
+                     dynamic_cast<ConstDeclAST *>(declAST->constDecl.get()),
+                     isGlobal);
   } else {
     assert(false && "Unknown declaration type");
   }
 }
 
-void IRGen::convertConstDecl(ConstDeclAST *constDeclAST) {
+void IRGen::convertConstDecl(ir::IRBuilder &builder, ConstDeclAST *constDeclAST,
+                             bool isGlobal) {
   assert(constDeclAST && "ConstDeclAST cannot be null");
   size_t size = constDeclAST->constDefs->size();
+  ir::Type *bType = ASTType2IRType(context, *constDeclAST->bType).value();
   for (size_t i = 0; i < size; ++i) {
     auto *constDef =
         dynamic_cast<ConstDefAST *>((*constDeclAST->constDefs)[i].get());
-    convertConstDef(constDef);
+    convertConstDef(builder, constDef, bType, isGlobal);
   }
 }
 
-void IRGen::convertConstDef(ConstDefAST *constDefAST) {
+void IRGen::convertConstDef(ir::IRBuilder &builder, ConstDefAST *constDefAST,
+                            ir::Type *bType, bool isGlobal) {
   assert(constDefAST && "ConstDefAST cannot be null");
-  auto *constInitVal =
-      dynamic_cast<ConstInitValAST *>(constDefAST->initVal.get());
-  auto *constExp =
-      constInitVal ? dynamic_cast<ConstExpAST *>(constInitVal->constExp.get())
-                   : nullptr;
-  auto *exp = constExp ? dynamic_cast<ExprAST *>(constExp->exp.get()) : nullptr;
-  int32_t value = interpreter.evalExpr(exp);
-  varTables.setConstant(constDefAST->var, value);
+  ConstInitValAST *constInitVal = constDefAST->initVal.get();
+  assert(constInitVal && "ConstDef must have an initializer");
+
+  if (constDefAST->isScalar()) {
+    assert(constInitVal->isScalar() &&
+           "Scalar ConstDef must have scalar initializer");
+    int32_t value = interpreter.evalExpr(
+        dynamic_cast<ExprAST *>(constInitVal->constExp->exp.get()));
+    varTables.setConstant(constDefAST->var, value);
+    return;
+  }
+  if (constDefAST->isArray()) {
+    assert(constInitVal->isArray() &&
+           "Array ConstDef must have array initializer");
+    // Compute array size.
+    int32_t arraySize = interpreter.evalExpr(
+        dynamic_cast<ExprAST *>(constDefAST->arraySize->exp.get()));
+    assert(arraySize > 0 && "Array size must be positive");
+    ir::ArrayType *arrayType = ir::ArrayType::get(context, bType, arraySize);
+
+    // Distinguish between global and local array constant definitions.
+    if (isGlobal) {
+      std::string varName = constDefAST->var;
+      std::list<ir::Value *> initValues;
+      const auto &initVec = *constInitVal->constExpVec.get();
+      for (const auto &init : initVec) {
+        int32_t val =
+            interpreter.evalExpr(dynamic_cast<ExprAST *>(init->exp.get()));
+        ir::Integer *irVal = ir::Integer::get(context, val, 32);
+        initValues.push_back(irVal);
+      }
+      auto *alloc =
+          ir::GlobalAlloc::create(context, varName, arrayType, initValues);
+      auto *constDecl = ir::GlobalVarDecl::create(context, varName, alloc);
+      currentModule->addDeclaration(constDecl);
+      varTables.setValue(constDefAST->var, alloc->getResult());
+    } else {
+      std::string varName =
+          constDefAST->var + "_" + std::to_string(getNextTempId());
+      ir::Value *alloc =
+          builder.create<ir::LocalAlloc>(varName, arrayType, true)->getResult();
+      varTables.setValue(constDefAST->var, alloc);
+
+      const auto &initVec = *constInitVal->constExpVec.get();
+      initializeLocalArray(
+          builder, alloc, arraySize, initVec.size(), [&](size_t i) {
+            int32_t val = interpreter.evalExpr(
+                dynamic_cast<ExprAST *>(initVec[i]->exp.get()));
+            return ir::Integer::get(context, val, 32);
+          });
+    }
+    return;
+  }
+
+  assert(false && "Unknown ConstDef type");
 }
 
 void IRGen::convertVarDecl(ir::IRBuilder &builder, VarDeclAST *varDeclAST,
@@ -488,37 +570,133 @@ void IRGen::convertLocalVarDef(ir::IRBuilder &builder, VarDefAST *varDefAST,
   // allocation.
   std::string varName = varDefAST->var + "_" + std::to_string(getNextTempId());
   ir::Type *allocType = ASTType2IRType(context, bType).value();
-  ir::Value *alloc =
-      builder.create<ir::LocalAlloc>(varName, allocType, true)->getResult();
-  varTables.setValue(varDefAST->var, alloc);
 
-  // 2. If there is an initializer, evaluate it and store the value.
-  if (varDefAST->initVal) {
-    ir::Value *initValue =
-        dispatchAndConvert(builder, varDefAST->initVal.get());
-    builder.create<ir::StoreOp>(initValue, alloc);
+  if (varDefAST->isScalar()) {
+    ir::Value *alloc =
+        builder.create<ir::LocalAlloc>(varName, allocType, true)->getResult();
+    varTables.setValue(varDefAST->var, alloc);
+
+    // If there is an initializer, evaluate it and store the value.
+    if (varDefAST->initVal) {
+      ir::Value *initValue =
+          dispatchAndConvert(builder, varDefAST->initVal.get());
+      builder.create<ir::StoreOp>(initValue, alloc);
+    }
+    return;
+  }
+
+  if (varDefAST->isArray()) {
+    assert(varDefAST->arraySize && "Array variable must have a size");
+    int32_t arraySize = interpreter.evalExpr(
+        dynamic_cast<ExprAST *>(varDefAST->arraySize->exp.get()));
+    assert(arraySize > 0 && "Array size must be positive");
+    ir::ArrayType *arrayType =
+        ir::ArrayType::get(context, allocType, arraySize);
+
+    ir::Value *alloc =
+        builder.create<ir::LocalAlloc>(varName, arrayType, true)->getResult();
+    varTables.setValue(varDefAST->var, alloc);
+
+    if (!varDefAST->initVal)
+      return;
+
+    // If there is an initializer, evaluate it and store the values.
+    InitValAST *initValAST = varDefAST->initVal.get();
+    assert(initValAST->isArray() &&
+           "Array variable must have array initializer");
+    const auto &initVec = *initValAST->initValVec.get();
+
+    initializeLocalArray(
+        builder, alloc, arraySize, initVec.size(), [&](size_t i) {
+          return dispatchAndConvert(builder, initVec[i]->exp.get());
+        });
+    return;
+  }
+
+  assert(false && "Unknown VarDef type");
+}
+
+void IRGen::initializeLocalArray(
+    ir::IRBuilder &builder, ir::Value *alloc, size_t arraySize,
+    size_t initCount, std::function<ir::Value *(size_t)> getInitValue) {
+  assert(alloc && "Array allocation cannot be null");
+  assert(initCount <= arraySize && "Initializer size exceeds array size");
+
+  // Initialize the elements with provided initial values.
+  for (size_t i = 0; i < initCount; ++i) {
+    // Callback to get the i-th initial value.
+    ir::Value *initValue = getInitValue(i);
+    ir::Integer *idx = ir::Integer::get(context, static_cast<int>(i), 32);
+    ir::Value *elemPtr =
+        builder.create<ir::GetElemPtrOp>(alloc, idx)->getResult();
+    builder.create<ir::StoreOp>(initValue, elemPtr);
+  }
+
+  // Zero-initialize the remaining elements.
+  if (initCount < arraySize) {
+    ir::Integer *zero = ir::Integer::get(context, 0, 32);
+    for (size_t i = initCount; i < arraySize; ++i) {
+      ir::Integer *idx = ir::Integer::get(context, static_cast<int>(i), 32);
+      ir::Value *elemPtr =
+          builder.create<ir::GetElemPtrOp>(alloc, idx)->getResult();
+      builder.create<ir::StoreOp>(zero, elemPtr);
+    }
   }
 }
 
 void IRGen::convertGlobalVarDef(ir::IRBuilder &builder, VarDefAST *varDefAST,
                                 const Type &bType) {
   assert(varDefAST && "VarDefAST cannot be null");
+  std::string varName = varDefAST->var;
+
+  auto registerGlobalVar = [&](ir::GlobalAlloc *alloc) {
+    auto *varDecl = ir::GlobalVarDecl::create(context, varName, alloc);
+    currentModule->addDeclaration(varDecl);
+    varTables.setValue(varName, alloc->getResult());
+  };
 
   // 1. Create allocation.
   ir::Type *allocType = ASTType2IRType(context, bType).value();
-  ir::Value *initValue = nullptr;
-  if (varDefAST->initVal) {
-    // The builder here is only used to dispatch and convert the initializer.
-    // We assume the initializer is a constant expression for global variables.
-    initValue = dispatchAndConvert(builder, varDefAST->initVal.get());
+
+  if (varDefAST->isScalar()) {
+    ir::Value *initValue = nullptr;
+    if (varDefAST->initVal) {
+      // The builder here is only used to dispatch and convert the initializer.
+      // We assume the initializer is a constant expression for global
+      // variables.
+      initValue = dispatchAndConvert(builder, varDefAST->initVal.get());
+    }
+
+    auto *alloc =
+        ir::GlobalAlloc::create(context, varName, allocType, initValue);
+    registerGlobalVar(alloc);
+    return;
   }
-  std::string varName = varDefAST->var;
-  ir::GlobalAlloc *alloc =
-      ir::GlobalAlloc::create(context, varName, allocType, initValue);
-  ir::GlobalVarDecl *varDecl =
-      ir::GlobalVarDecl::create(context, varName, alloc);
-  currentModule->addDeclaration(varDecl);
-  varTables.setValue(varName, alloc->getResult());
+
+  if (varDefAST->isArray()) {
+    assert(varDefAST->arraySize && "Array variable must have a size");
+    int32_t arraySize = interpreter.evalExpr(
+        dynamic_cast<ExprAST *>(varDefAST->arraySize->exp.get()));
+    assert(arraySize > 0 && "Array size must be positive");
+    auto *arrayType = ir::ArrayType::get(context, allocType, arraySize);
+    std::list<ir::Value *> initValues;
+    if (varDefAST->initVal) {
+      InitValAST *initValAST = varDefAST->initVal.get();
+      assert(initValAST->isArray() &&
+             "Array variable must have array initializer");
+      const auto &initVec = *initValAST->initValVec.get();
+      for (const auto &init : initVec) {
+        ir::Value *val = dispatchAndConvert(builder, init->exp.get());
+        initValues.push_back(val);
+      }
+    }
+    auto *array =
+        ir::GlobalAlloc::create(context, varName, arrayType, initValues);
+    registerGlobalVar(array);
+    return;
+  }
+
+  assert(false && "Unknown VarDef type");
 }
 
 void IRGen::convertBlock(ir::IRBuilder &builder, BlockAST *blockAST) {

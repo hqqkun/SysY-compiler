@@ -26,11 +26,16 @@ void yyerror(std::unique_ptr<ast::BaseAST>& ast, const char* s);
   int int_val;
   std::string* str_val;
   ast::BaseAST* ast_val;
+  ast::ConstInitValAST* constInitVal;
+  ast::ConstExpAST* constExp;
+  ast::InitValAST* initVal;
   ast::BlockAST* block_val;
   std::vector<ast::ASTPtr>* astVec;
   std::vector<ast::BlockItemPtr>* blockItemVec;
   std::vector<ast::FuncFParamPtr>* funcFParamVec;
   std::vector<ast::FuncRParamPtr>* funcRParamVec;
+  std::vector<ast::ConstExpPtr>* constExpVec;
+  std::vector<ast::ExprPtr>* exprVec;
   ast::FuncFParamAST* funcFParam;
   ast::BlockItemAST* blockItem;
   ast::Op op;
@@ -44,11 +49,16 @@ void yyerror(std::unique_ptr<ast::BaseAST>& ast, const char* s);
 
 %type <op> UnaryOp MulOp AddOp RelOp EqOp LAndOp LOrOp
 
-%type <ast_val> FuncDef Block Stmt Decl ConstDecl VarDecl ConstDef VarDef ConstInitVal InitVal
-%type <ast_val> EXP PrimaryExp UnaryExp MulExp AddExp RelExp EqExp LAndExp LOrExp ConstExp LVal
+%type <ast_val> FuncDef Block Stmt Decl ConstDecl VarDecl ConstDef VarDef
+%type <constInitVal> ConstInitVal
+%type <initVal> InitVal
+%type <ast_val> EXP PrimaryExp UnaryExp MulExp AddExp RelExp EqExp LAndExp LOrExp LVal
+%type <constExp> ConstExp
 %type <astVec> ConstDefList
 %type <astVec> VarDefList
 %type <astVec> CompUnitList
+%type <constExpVec> ConstExpList
+%type <exprVec> ExprList
 %type <blockItemVec> BlockItemList
 %type <funcFParamVec> FuncFParamList
 %type <funcFParam> FuncFParam
@@ -196,18 +206,46 @@ VarDefList
 
 ConstDef
     : IDENT T_ASSIGN ConstInitVal {
+      // Variable with initialization.
       auto var = *std::unique_ptr<std::string>($1);
-      auto init = std::unique_ptr<ast::BaseAST>($3);
+      auto init = std::unique_ptr<ast::ConstInitValAST>($3);
       $$ = new ast::ConstDefAST(var, std::move(init));
+    }
+    | IDENT '[' ConstExp ']' T_ASSIGN ConstInitVal {
+      // Array variable with initialization.
+      auto var = *std::unique_ptr<std::string>($1);
+      auto size = std::unique_ptr<ast::ConstExpAST>($3);
+      auto init = std::unique_ptr<ast::ConstInitValAST>($6);
+      $$ = new ast::ConstDefAST(var, std::move(size), std::move(init));
     }
     ;
 
 ConstInitVal
     : ConstExp {
-      auto exp = std::unique_ptr<ast::BaseAST>($1);
+      auto exp = std::unique_ptr<ast::ConstExpAST>($1);
       $$ = new ast::ConstInitValAST(std::move(exp));
     }
+    | '{' ConstExpList '}' {
+      auto list = std::unique_ptr<std::vector<ast::ConstExpPtr>>($2);
+      $$ = new ast::ConstInitValAST(std::move(list));
+    }
     ;
+
+ConstExpList
+    : /* empty */ {
+      auto vec = new std::vector<ast::ConstExpPtr>();
+      $$ = vec;
+    }
+    | ConstExp {
+      auto vec = new std::vector<ast::ConstExpPtr>();
+      vec->emplace_back($1);
+      $$ = vec;
+    }
+    | ConstExpList ',' ConstExp {
+      auto vec = $1;
+      vec->emplace_back($3);
+      $$ = vec;
+    }
 
 VarDef
     : IDENT {
@@ -216,17 +254,48 @@ VarDef
     }
     | IDENT T_ASSIGN InitVal {
       auto var = *std::unique_ptr<std::string>($1);
-      auto init = std::unique_ptr<ast::BaseAST>($3);
+      auto init = std::unique_ptr<ast::InitValAST>($3);
       $$ = new ast::VarDefAST(var, std::move(init));
+    }
+    | IDENT '[' ConstExp ']' {
+      auto var = *std::unique_ptr<std::string>($1);
+      auto size = std::unique_ptr<ast::ConstExpAST>($3);
+      $$ = new ast::VarDefAST(var, std::move(size));
+    }
+    | IDENT '[' ConstExp ']' T_ASSIGN InitVal {
+      auto var = *std::unique_ptr<std::string>($1);
+      auto size = std::unique_ptr<ast::ConstExpAST>($3);
+      auto init = std::unique_ptr<ast::InitValAST>($6);
+      $$ = new ast::VarDefAST(var, std::move(size), std::move(init));
     }
     ;
 
 InitVal
     : EXP {
-      auto exp = std::unique_ptr<ast::BaseAST>($1);
+      auto exp = std::unique_ptr<ast::ExprAST>(static_cast<ast::ExprAST*>($1));
       $$ = new ast::InitValAST(std::move(exp));
     }
+    | '{' ExprList '}' {
+      auto list = std::unique_ptr<std::vector<ast::ExprPtr>>($2);
+      $$ = new ast::InitValAST(std::move(list));
+    }
     ;
+
+ExprList
+    : /* empty */ {
+      auto vec = new std::vector<ast::ExprPtr>();
+      $$ = vec;
+    }
+    | EXP {
+      auto vec = new std::vector<ast::ExprPtr>();
+      vec->emplace_back(static_cast<ast::ExprAST*>($1));
+      $$ = vec;
+    }
+    | ExprList ',' EXP {
+      auto vec = $1;
+      vec->emplace_back(static_cast<ast::ExprAST*>($3));
+      $$ = vec;
+    }
 
 Block
     : '{' BlockItemList '}' {
@@ -312,6 +381,11 @@ LVal
     : IDENT {
       auto var = *std::unique_ptr<std::string>($1);
       $$ = new ast::LValAST(var);
+    }
+    | IDENT '[' EXP ']' {
+      auto var = *std::unique_ptr<std::string>($1);
+      auto index = std::unique_ptr<ast::ExprAST>(static_cast<ast::ExprAST*>($3));
+      $$ = new ast::LValAST(var, std::move(index));
     }
     ;
 

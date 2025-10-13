@@ -23,9 +23,17 @@ public:
   bool isFunction() const { return kind == TypeKind::kFunction; }
   bool isValid() const { return kind != TypeKind::kInvalid; }
   bool isPointer() const { return kind == TypeKind::KPointer; }
+  bool isArray() const { return kind == TypeKind::KArray; }
 
 protected:
-  enum class TypeKind { kInvalid, kInteger, kVoid, kFunction, KPointer };
+  enum class TypeKind {
+    kInvalid,
+    kInteger,
+    kVoid,
+    kFunction,
+    KPointer,
+    KArray
+  };
   explicit Type(TypeKind k = TypeKind::kInvalid) : kind(k) {}
   TypeKind kind;
 };
@@ -77,6 +85,20 @@ public:
 
 private:
   Type *pointeeType;
+};
+
+class ArrayType : public Type {
+public:
+  explicit ArrayType(IRContext &context, Type *elementType, size_t size)
+      : Type(TypeKind::KArray), elementType(elementType), size(size) {}
+  Type *getElementType() const { return elementType; }
+  size_t getSize() const { return size; }
+
+  static ArrayType *get(IRContext &context, Type *elementType, size_t size);
+
+private:
+  Type *elementType;
+  size_t size;
 };
 
 } // namespace ir

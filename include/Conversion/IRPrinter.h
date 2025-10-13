@@ -61,6 +61,8 @@ private:
                          bool withParamNames = true);
   void printFunctionDeclaration(ir::FunctionDecl *funcDecl);
   void printGlobalVarDeclaration(ir::GlobalVarDecl *varDecl);
+  void printSingleInitializer(ir::GlobalAlloc *allocOp, OpResultMap &map);
+  void printArrayInitializer(ir::GlobalAlloc *allocOp, OpResultMap &map);
   void AddAllocName(ir::OpResult *result, const std::string &name,
                     bool isGlobal = false);
   std::optional<std::string> getAllocName(ir::OpResult *result) const;

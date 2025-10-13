@@ -26,4 +26,8 @@ PointerType *PointerType::get(IRContext &context, Type *pointeeType) {
   return context.create<PointerType>(pointeeType);
 }
 
+ArrayType *ArrayType::get(IRContext &context, Type *elementType, size_t size) {
+  return context.create<ArrayType>(elementType, size);
+}
+
 } // namespace ir
