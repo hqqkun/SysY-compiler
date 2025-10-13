@@ -1,6 +1,7 @@
 #ifndef __IR_OPERATION_H__
 #define __IR_OPERATION_H__
 
+#include <list>
 #include <ostream>
 #include <string>
 #include <string_view>
@@ -164,15 +165,34 @@ public:
   explicit GlobalAlloc(IRContext &context, const std::string &var,
                        Type *allocType, Value *initVal = nullptr,
                        size_t size = 1);
+  explicit GlobalAlloc(IRContext &context, const std::string &var,
+                       Type *allocType, const std::list<Value *> &initVals,
+                       size_t size = 1);
   static GlobalAlloc *create(IRContext &context, const std::string &var,
                              Type *allocType, Value *initVal = nullptr,
                              size_t size = 1) {
     return context.create<GlobalAlloc>(var, allocType, initVal, size);
   }
+
+  static GlobalAlloc *create(IRContext &context, const std::string &var,
+                             Type *allocType,
+                             const std::list<Value *> &initVals,
+                             size_t size = 1) {
+    GlobalAlloc *alloc =
+        context.create<GlobalAlloc>(var, allocType, initVals, size);
+    alloc->initValues = initVals;
+    return alloc;
+  }
+
   Value *getInitValue() const { return initValue; }
+  const std::list<Value *> &getInitValues() const { return initValues; }
+  bool isSingle() const { return kind == Kind::SINGLE; }
+  bool isMultiple() const { return kind == Kind::MULTIPLE; }
 
 private:
-  Value *initValue; // can be nullptr
+  Value *initValue;              // can be nullptr
+  std::list<Value *> initValues; // for array initializations
+  enum class Kind { SINGLE, MULTIPLE } kind;
 };
 
 class LoadOp : public Operation {
@@ -237,6 +257,15 @@ public:
 
 private:
   std::string funcName;
+};
+
+class GetElemPtrOp : public Operation {
+public:
+  explicit GetElemPtrOp(IRContext &context, Value *basePtr, Value *index);
+  Value *getBasePointer() const { return getOperand(0); }
+  Value *getIndex() const { return getOperand(1); }
+
+  std::string_view getOpName() const override { return "getelemptr"; }
 };
 
 } // namespace ir

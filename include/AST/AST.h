@@ -16,7 +16,10 @@ using FuncFParamPtr = std::unique_ptr<class FuncFParamAST>;
 using FuncRParamPtr = std::unique_ptr<class ExprAST>;
 using FuncCallPtr = std::unique_ptr<class FuncCallAST>;
 using TypePtr = std::unique_ptr<struct Type>;
-class ExprAST;
+using ConstExpPtr = std::unique_ptr<class ConstExpAST>;
+using ConstInitValASTPtr = std::unique_ptr<class ConstInitValAST>;
+using InitValASTPtr = std::unique_ptr<class InitValAST>;
+using ExprPtr = std::unique_ptr<class ExprAST>;
 
 class BaseAST {
 public:
@@ -105,38 +108,82 @@ public:
 class ConstDefAST : public BaseAST {
 public:
   std::string var;
-  ASTPtr initVal;
+  ConstExpPtr arraySize;
+  ConstInitValASTPtr initVal;
+
+  bool isScalar() const { return type == Type::SCALAR; }
+  bool isArray() const { return type == Type::ARRAY; }
   void dump() const override;
 
-  ConstDefAST(const std::string &name, ASTPtr init)
-      : var(name), initVal(std::move(init)) {}
+  ConstDefAST(const std::string &name, ConstInitValASTPtr init)
+      : var(name), arraySize(nullptr), initVal(std::move(init)),
+        type(Type::SCALAR) {}
+  ConstDefAST(const std::string &name, ConstExpPtr size,
+              ConstInitValASTPtr init)
+      : var(name), arraySize(std::move(size)), initVal(std::move(init)),
+        type(Type::ARRAY) {}
+
+private:
+  enum class Type { SCALAR, ARRAY } type;
 };
 
 class ConstInitValAST : public BaseAST {
 public:
-  ASTPtr constExp;
+  ConstExpPtr constExp;
+  std::unique_ptr<std::vector<ConstExpPtr>> constExpVec;
+  bool isScalar() const { return type == Type::SCALAR; }
+  bool isArray() const { return type == Type::ARRAY; }
   void dump() const override;
 
-  ConstInitValAST(ASTPtr exp) : constExp(std::move(exp)) {}
+  ConstInitValAST(ConstExpPtr exp)
+      : constExp(std::move(exp)), constExpVec(nullptr), type(Type::SCALAR) {}
+  ConstInitValAST(std::unique_ptr<std::vector<ConstExpPtr>> exps)
+      : constExp(nullptr), constExpVec(std::move(exps)), type(Type::ARRAY) {}
+
+private:
+  enum class Type { SCALAR, ARRAY } type;
 };
 
 class VarDefAST : public BaseAST {
 public:
   std::string var;
-  ASTPtr initVal; // can be nullptr
+  InitValASTPtr initVal;
+  ConstExpPtr arraySize;
+  bool isScalar() const { return type == Type::SCALAR; }
+  bool isArray() const { return type == Type::ARRAY; }
   void dump() const override;
 
-  VarDefAST(const std::string &name, ASTPtr init)
-      : var(name), initVal(std::move(init)) {}
-  VarDefAST(const std::string &name) : var(name), initVal(nullptr) {}
+  VarDefAST(const std::string &name, InitValASTPtr init)
+      : var(name), initVal(std::move(init)), arraySize(nullptr),
+        type(Type::SCALAR) {}
+  VarDefAST(const std::string &name)
+      : var(name), initVal(nullptr), arraySize(nullptr), type(Type::SCALAR) {}
+  VarDefAST(const std::string &name, ConstExpPtr size)
+      : var(name), initVal(nullptr), arraySize(std::move(size)),
+        type(Type::ARRAY) {}
+  VarDefAST(const std::string &name, ConstExpPtr size, InitValASTPtr init)
+      : var(name), initVal(std::move(init)), arraySize(std::move(size)),
+        type(Type::ARRAY) {}
+
+private:
+  enum class Type { SCALAR, ARRAY } type;
 };
 
 class InitValAST : public BaseAST {
 public:
-  ASTPtr exp;
+  ExprPtr exp;
+  std::unique_ptr<std::vector<ExprPtr>> initValVec;
+  bool isScalar() const { return type == Type::SCALAR; }
+  bool isArray() const { return type == Type::ARRAY; }
   void dump() const override;
 
-  InitValAST(ASTPtr e) : exp(std::move(e)) {}
+  InitValAST(ExprPtr e)
+      : exp(std::move(e)), initValVec(nullptr), type(Type::SCALAR) {}
+  InitValAST(std::unique_ptr<std::vector<ExprPtr>> exps)
+      : exp(nullptr), initValVec(std::move(exps)), type(Type::ARRAY) {}
+
+private:
+  enum class Type { SCALAR, ARRAY } type;
 };
 
 class BlockAST : public BaseAST {
@@ -202,25 +249,24 @@ public:
 
 class IfStmtAST : public StmtAST {
 public:
-  std::unique_ptr<ExprAST> cond;
+  ExprPtr cond;
   std::unique_ptr<StmtAST> thenStmt;
   std::unique_ptr<StmtAST> elseStmt; // can be nullptr
   void dump() const override;
 
-  IfStmtAST(std::unique_ptr<ExprAST> c, std::unique_ptr<StmtAST> t)
+  IfStmtAST(ExprPtr c, std::unique_ptr<StmtAST> t)
       : cond(std::move(c)), thenStmt(std::move(t)), elseStmt(nullptr) {}
-  IfStmtAST(std::unique_ptr<ExprAST> c, std::unique_ptr<StmtAST> t,
-            std::unique_ptr<StmtAST> e)
+  IfStmtAST(ExprPtr c, std::unique_ptr<StmtAST> t, std::unique_ptr<StmtAST> e)
       : cond(std::move(c)), thenStmt(std::move(t)), elseStmt(std::move(e)) {}
 };
 
 class WhileStmtAST : public StmtAST {
 public:
-  std::unique_ptr<ExprAST> cond;
+  ExprPtr cond;
   std::unique_ptr<StmtAST> body;
   void dump() const override;
 
-  WhileStmtAST(std::unique_ptr<ExprAST> c, std::unique_ptr<StmtAST> b)
+  WhileStmtAST(ExprPtr c, std::unique_ptr<StmtAST> b)
       : cond(std::move(c)), body(std::move(b)) {}
 };
 
@@ -244,9 +290,18 @@ public:
 class LValAST : public BaseAST {
 public:
   std::string ident;
+  ExprPtr arrayIndex; // can be nullptr
+  bool isScalar() const { return type == Type::SCALAR; }
+  bool isArray() const { return type == Type::ARRAY; }
   void dump() const override;
 
-  LValAST(const std::string &var) : ident(var) {}
+  LValAST(const std::string &var)
+      : ident(var), arrayIndex(nullptr), type(Type::SCALAR) {}
+  LValAST(const std::string &var, ExprPtr index)
+      : ident(var), arrayIndex(std::move(index)), type(Type::ARRAY) {}
+
+private:
+  enum class Type { SCALAR, ARRAY } type;
 };
 
 // PrimaryExp ::= "(" Exp ")" | Number

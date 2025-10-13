@@ -12,6 +12,8 @@
 #include "IR/Value.h"
 #include "Interpreter/Interpreter.h"
 #include "Utils/Utils.h"
+#include <cstddef>
+#include <functional>
 
 namespace conversion {
 
@@ -65,10 +67,12 @@ private:
   /// Convert declarations and definitions.
   void convertDeclaration(ir::IRBuilder &builder, ast::DeclAST *declAST,
                           bool isGlobal = false);
-  void convertConstDecl(ast::ConstDeclAST *constDeclAST);
+  void convertConstDecl(ir::IRBuilder &builder, ast::ConstDeclAST *constDeclAST,
+                        bool isGlobal = false);
   void convertVarDecl(ir::IRBuilder &builder, ast::VarDeclAST *varDeclAST,
                       bool isGlobal = false);
-  void convertConstDef(ast::ConstDefAST *constDefAST);
+  void convertConstDef(ir::IRBuilder &builder, ast::ConstDefAST *constDefAST,
+                       ir::Type *bType, bool isGlobal = false);
   void convertLocalVarDef(ir::IRBuilder &builder, ast::VarDefAST *varDefAST,
                           const ast::Type &bType);
   void convertGlobalVarDef(ir::IRBuilder &builder, ast::VarDefAST *varDefAST,
@@ -94,6 +98,14 @@ private:
   /// Create an unreachable block to prevent fall-through after a jump or
   /// return.
   void createUnreachableBlock(ir::IRBuilder &builder);
+
+  /// Helper function to initialize an array with given initial values.
+  void initializeLocalArray(ir::IRBuilder &builder, ir::Value *alloc,
+                            size_t arraySize, size_t initCount,
+                            std::function<ir::Value *(size_t)> getInitValue);
+  void initializeGlobalArray(ir::IRBuilder &builder, ir::Value *alloc,
+                             size_t arraySize, size_t initCount,
+                             std::function<ir::Value *(size_t)> getInitValue);
 
   /// Utility functions for block id management.
   uint64_t getNextBlockId() { return nextBlockId++; }
