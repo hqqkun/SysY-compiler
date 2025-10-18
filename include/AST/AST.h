@@ -24,13 +24,11 @@ using ExprPtr = std::unique_ptr<class ExprAST>;
 class BaseAST {
 public:
   virtual ~BaseAST() = default;
-  virtual void dump() const = 0;
 };
 
 class CompUnitAST : public BaseAST {
 public:
   std::unique_ptr<std::vector<ASTPtr>> topLevelNodes;
-  void dump() const override;
 
   CompUnitAST(std::unique_ptr<std::vector<ASTPtr>> nodes)
       : topLevelNodes(std::move(nodes)) {}
@@ -42,7 +40,6 @@ public:
   std::string ident;
   std::unique_ptr<std::vector<FuncFParamPtr>> funcFParams;
   ASTPtr block;
-  void dump() const override;
 
   FuncDefAST(TypePtr type, const std::string &name, ASTPtr b)
       : retType(std::move(type)), ident(name), funcFParams(nullptr),
@@ -64,7 +61,6 @@ class FuncFParamAST : public BaseAST {
 public:
   TypePtr type;
   std::string ident;
-  void dump() const override;
 
   FuncFParamAST(TypePtr t, const std::string &name)
       : type(std::move(t)), ident(name) {}
@@ -75,7 +71,6 @@ class DeclAST : public BaseAST {
 public:
   ASTPtr constDecl;
   ASTPtr varDecl;
-  void dump() const override;
 
   DeclAST(ASTPtr decl);
   bool isConstDecl() const { return type == Type::CONST; }
@@ -89,7 +84,6 @@ class ConstDeclAST : public BaseAST {
 public:
   TypePtr bType;
   std::unique_ptr<std::vector<ASTPtr>> constDefs;
-  void dump() const override;
 
   ConstDeclAST(TypePtr type, std::unique_ptr<std::vector<ASTPtr>> defs)
       : bType(std::move(type)), constDefs(std::move(defs)) {}
@@ -99,7 +93,6 @@ class VarDeclAST : public BaseAST {
 public:
   TypePtr bType;
   std::unique_ptr<std::vector<ASTPtr>> varDefs;
-  void dump() const override;
 
   VarDeclAST(TypePtr type, std::unique_ptr<std::vector<ASTPtr>> defs)
       : bType(std::move(type)), varDefs(std::move(defs)) {}
@@ -113,7 +106,6 @@ public:
 
   bool isScalar() const { return type == Type::SCALAR; }
   bool isArray() const { return type == Type::ARRAY; }
-  void dump() const override;
 
   ConstDefAST(const std::string &name, ConstInitValASTPtr init)
       : var(name), arraySize(nullptr), initVal(std::move(init)),
@@ -133,7 +125,6 @@ public:
   std::unique_ptr<std::vector<ConstExpPtr>> constExpVec;
   bool isScalar() const { return type == Type::SCALAR; }
   bool isArray() const { return type == Type::ARRAY; }
-  void dump() const override;
 
   ConstInitValAST(ConstExpPtr exp)
       : constExp(std::move(exp)), constExpVec(nullptr), type(Type::SCALAR) {}
@@ -151,7 +142,6 @@ public:
   ConstExpPtr arraySize;
   bool isScalar() const { return type == Type::SCALAR; }
   bool isArray() const { return type == Type::ARRAY; }
-  void dump() const override;
 
   VarDefAST(const std::string &name, InitValASTPtr init)
       : var(name), initVal(std::move(init)), arraySize(nullptr),
@@ -175,7 +165,6 @@ public:
   std::unique_ptr<std::vector<ExprPtr>> initValVec;
   bool isScalar() const { return type == Type::SCALAR; }
   bool isArray() const { return type == Type::ARRAY; }
-  void dump() const override;
 
   InitValAST(ExprPtr e)
       : exp(std::move(e)), initValVec(nullptr), type(Type::SCALAR) {}
@@ -189,7 +178,6 @@ private:
 class BlockAST : public BaseAST {
 public:
   std::unique_ptr<std::vector<BlockItemPtr>> blockItems;
-  void dump() const override;
 
   BlockAST(std::unique_ptr<std::vector<BlockItemPtr>> items)
       : blockItems(std::move(items)) {}
@@ -203,7 +191,6 @@ public:
   BlockItemAST(ASTPtr item);
   bool isDecl() const { return type == Type::DECL; }
   bool isStmt() const { return type == Type::STMT; }
-  void dump() const override;
 
 private:
   enum class Type { DECL, STMT } type;
@@ -215,7 +202,6 @@ class StmtAST : public BaseAST {};
 class ReturnStmtAST : public StmtAST {
 public:
   ASTPtr exp;
-  void dump() const override;
 
   ReturnStmtAST() : exp(nullptr) {}
   ReturnStmtAST(ASTPtr e) : exp(std::move(e)) {}
@@ -225,7 +211,6 @@ class AssignStmtAST : public StmtAST {
 public:
   ASTPtr lVal;
   ASTPtr exp;
-  void dump() const override;
 
   AssignStmtAST(ASTPtr lval, ASTPtr e)
       : lVal(std::move(lval)), exp(std::move(e)) {}
@@ -234,7 +219,6 @@ public:
 class ExprStmtAST : public StmtAST {
 public:
   ASTPtr exp; // can be nullptr.
-  void dump() const override;
 
   ExprStmtAST() : exp(nullptr) {}
   ExprStmtAST(ASTPtr e) : exp(std::move(e)) {}
@@ -243,7 +227,7 @@ public:
 class BlockStmtAST : public StmtAST {
 public:
   std::unique_ptr<BlockAST> block;
-  void dump() const override;
+
   BlockStmtAST(std::unique_ptr<BlockAST> b) : block(std::move(b)) {}
 };
 
@@ -252,7 +236,6 @@ public:
   ExprPtr cond;
   std::unique_ptr<StmtAST> thenStmt;
   std::unique_ptr<StmtAST> elseStmt; // can be nullptr
-  void dump() const override;
 
   IfStmtAST(ExprPtr c, std::unique_ptr<StmtAST> t)
       : cond(std::move(c)), thenStmt(std::move(t)), elseStmt(nullptr) {}
@@ -264,7 +247,6 @@ class WhileStmtAST : public StmtAST {
 public:
   ExprPtr cond;
   std::unique_ptr<StmtAST> body;
-  void dump() const override;
 
   WhileStmtAST(ExprPtr c, std::unique_ptr<StmtAST> b)
       : cond(std::move(c)), body(std::move(b)) {}
@@ -272,19 +254,16 @@ public:
 
 class BreakStmtAST : public StmtAST {
 public:
-  void dump() const override;
 };
 
 class ContinueStmtAST : public StmtAST {
 public:
-  void dump() const override;
 };
 
 /// Expression
 class ExprAST : public BaseAST {
 public:
   ASTPtr exp;
-  void dump() const override;
 };
 
 class LValAST : public BaseAST {
@@ -293,7 +272,6 @@ public:
   ExprPtr arrayIndex; // can be nullptr
   bool isScalar() const { return type == Type::SCALAR; }
   bool isArray() const { return type == Type::ARRAY; }
-  void dump() const override;
 
   LValAST(const std::string &var)
       : ident(var), arrayIndex(nullptr), type(Type::SCALAR) {}
@@ -310,7 +288,6 @@ public:
   int number;
   ASTPtr exp;
   ASTPtr lVal;
-  void dump() const override;
 
   PrimaryExpAST(int num) : number(num), type(Type::NUMBER) {}
   PrimaryExpAST(ASTPtr var) {
@@ -339,7 +316,6 @@ public:
   Op unaryOp;
   ASTPtr childUnaryExp;
   FuncCallPtr funcCall;
-  void dump() const override;
 
   UnaryExpAST(ASTPtr primary)
       : primaryExp(std::move(primary)), type(Type::PRIMARY) {}
@@ -362,7 +338,6 @@ class FuncCallAST : public BaseAST {
 public:
   std::string ident;
   std::unique_ptr<std::vector<FuncRParamPtr>> funcRParams;
-  void dump() const override;
 
   FuncCallAST(const std::string &name) : ident(name), funcRParams(nullptr) {}
   FuncCallAST(const std::string &name,
@@ -375,7 +350,6 @@ public:
 class ConstExpAST : public BaseAST {
 public:
   ASTPtr exp;
-  void dump() const override;
 
   ConstExpAST(ASTPtr e) : exp(std::move(e)) {}
 };
@@ -393,8 +367,6 @@ public:
         type(Type::COMPOSITE) {}
   bool isSingle() const { return type == Type::SINGLE; }
   bool isComposite() const { return type == Type::COMPOSITE; }
-
-  void dump() const override;
 
 protected:
   enum class Type { SINGLE, COMPOSITE } type;
