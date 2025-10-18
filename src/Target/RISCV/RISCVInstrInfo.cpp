@@ -16,6 +16,31 @@ using namespace ir;
 namespace target {
 namespace riscv {
 
+/// Get the size of the given type in bytes.
+size_t RISCVInstrInfo::getTypeSizeInBytes(ir::Type *type) {
+  assert(type && "Type cannot be null");
+  if (type->isInteger()) {
+    auto intType = static_cast<ir::IntegerType *>(type);
+    return intType->getBitWidth() / 8;
+  }
+  if (type->isPointer()) {
+    return riscv::wordSize; // Assume pointer size is word size.
+  }
+
+  if (type->isArray()) {
+    auto arrayType = static_cast<ir::ArrayType *>(type);
+    return getTypeSizeInBytes(arrayType->getElementType()) *
+           arrayType->getSize();
+  }
+
+  assert(false && "Unsupported type for size calculation");
+  return 0;
+}
+
+static inline bool isInImm12Range(int32_t imm) {
+  return imm >= kMinImm12 && imm <= kMaxImm12;
+}
+
 using OpHandler = std::function<void(Register, Register, Register,
                                      std::vector<mc::MCInst> &)>;
 
@@ -92,24 +117,105 @@ static const std::unordered_map<std::type_index, OpHandler> opHandlers = {
      }},
 };
 
-/// Load a value from the stack with a base register and offset into a temporary
-/// register.
-static Register loadFromStackWithBase(Register temp,
-                                      std::vector<mc::MCInst> &outInsts,
-                                      Register baseReg, uint32_t offset) {
+/// Adds an immediate value to the value in a source register and stores the
+/// result in a destination register, handling both 12-bit and larger
+/// immediates.
+static inline void addImmediateToRegister(Register dest, Register src,
+                                          int32_t imm,
+                                          std::vector<mc::MCInst> &outInsts,
+                                          Register temp = riscv::T0) {
+  if (isInImm12Range(imm)) {
+    // Immediate fits in 12 bits, use ADDI directly.
+    outInsts.push_back(
+        mc::MCInstBuilder(riscv::ADDI).addReg(dest).addReg(src).addImm(imm));
+    return;
+  }
+  // Immediate does not fit in 12 bits, load it into a temporary register first.
+  outInsts.push_back(mc::MCInstBuilder(riscv::LI).addReg(temp).addImm(imm));
   outInsts.push_back(
-      mc::MCInstBuilder(riscv::LW).addReg(temp).addMem(baseReg, offset));
-  return temp;
+      mc::MCInstBuilder(riscv::ADD).addReg(dest).addReg(src).addReg(temp));
 }
 
-/// Load a value from a global variable into a temporary register.
-static void loadFromGlobalVar(Register temp, std::vector<mc::MCInst> &outInsts,
-                              const std::string &varName) {
+/// Emits RISC-V LW instruction(s) to load data into the destination register
+/// from the address computed by base register plus offset, using direct LW if
+/// offset fits in 12 bits, otherwise generating offset loading and addition
+/// first.
+static inline void emitLoadWithOffset(Register dst, Register baseReg,
+                                      int32_t offset,
+                                      std::vector<mc::MCInst> &outInsts) {
+  if (isInImm12Range(offset)) {
+    // Immediate fits in 12 bits, use LW directly.
+    outInsts.push_back(
+        mc::MCInstBuilder(riscv::LW).addReg(dst).addMem(baseReg, offset));
+    return;
+  }
+
+  assert(dst != baseReg &&
+         "Destination register must be different from base register");
+  // Immediate does not fit in 12 bits, load it into a temporary register first.
+  outInsts.push_back(mc::MCInstBuilder(riscv::LI).addReg(dst).addImm(offset));
+  outInsts.push_back(
+      mc::MCInstBuilder(riscv::ADD).addReg(dst).addReg(baseReg).addReg(dst));
+  outInsts.push_back(mc::MCInstBuilder(riscv::LW).addReg(dst).addMem(dst, 0));
+}
+
+/// Emits RISC-V SW instruction(s) to store source register data to address
+/// (base + offset), handling large offsets with a temporary register.
+/// baseReg is not changed during emission.
+static inline void emitStoreWithOffset(Register value, Register baseReg,
+                                       int32_t offset,
+                                       std::vector<mc::MCInst> &outInsts,
+                                       Register temp = riscv::T0) {
+  // IMPORTANT: Should not change baseReg.
+  if (isInImm12Range(offset)) {
+    // Immediate fits in 12 bits, use SW directly.
+    outInsts.push_back(
+        mc::MCInstBuilder(riscv::SW).addReg(value).addMem(baseReg, offset));
+    return;
+  }
+
+  assert(temp != baseReg && temp != value &&
+         "Temporary register must be different from base and source registers");
+  // Immediate does not fit in 12 bits, load it into a temporary register first.
+  outInsts.push_back(mc::MCInstBuilder(riscv::LI).addReg(temp).addImm(offset));
+  outInsts.push_back(
+      mc::MCInstBuilder(riscv::ADD).addReg(temp).addReg(baseReg).addReg(temp));
+  outInsts.push_back(
+      mc::MCInstBuilder(riscv::SW).addReg(value).addMem(temp, 0));
+}
+
+/// Load a value from the stack with a base register and offset into a temporary
+/// register.
+static Register loadFromStackWithBase(Register dst, Register baseReg,
+                                      int32_t offset,
+                                      std::vector<mc::MCInst> &outInsts,
+                                      bool elemPtr = false) {
+  emitLoadWithOffset(dst, baseReg, offset, outInsts);
+  if (elemPtr) {
+    // Dereference the pointer to get the actual value.
+    // %0 = getelementptr %ptr
+    // %1 = load %0
+    emitLoadWithOffset(dst, dst, 0, outInsts);
+  }
+  return dst;
+}
+
+/// Get the address of a global variable into a temporary register.
+static inline void getGlobalVarAddress(Register temp,
+                                       const std::string &varName,
+                                       std::vector<mc::MCInst> &outInsts) {
   // Load address of the global variable into `temp`.
   outInsts.push_back(
       mc::MCInstBuilder(riscv::LA).addReg(temp).addLabel(varName));
+}
+
+/// Load a value from a global variable into a temporary register.
+static void loadFromGlobalVar(Register temp, const std::string &varName,
+                              std::vector<mc::MCInst> &outInsts) {
+  // Load address of the global variable into `temp`.
+  getGlobalVarAddress(temp, varName, outInsts);
   // Load the value from the address in `temp` into `temp`.
-  outInsts.push_back(mc::MCInstBuilder(riscv::LW).addReg(temp).addMem(temp, 0));
+  emitLoadWithOffset(temp, temp, 0, outInsts);
 }
 
 static void storeToGlobalVar(Register src, Register temp,
@@ -119,7 +225,17 @@ static void storeToGlobalVar(Register src, Register temp,
   outInsts.push_back(
       mc::MCInstBuilder(riscv::LA).addReg(temp).addLabel(varName));
   // Store the value from `src` into the address in `temp`.
-  outInsts.push_back(mc::MCInstBuilder(riscv::SW).addReg(src).addMem(temp, 0));
+  emitStoreWithOffset(src, temp, 0, outInsts);
+}
+
+/// Load a pointer from a stack slot, then store a value to the address pointed
+/// to by that pointer.
+static void storeViaStackPointer(Register srcReg, uint32_t ptrSlot,
+                                 Register tempReg,
+                                 std::vector<mc::MCInst> &outInsts) {
+  // Load the actual address from the stack slot.
+  emitLoadWithOffset(tempReg, riscv::SP, ptrSlot, outInsts);
+  emitStoreWithOffset(srcReg, tempReg, 0, outInsts);
 }
 
 void RISCVInstrInfo::lowerReturn(ReturnOp *retOp,
@@ -165,8 +281,8 @@ void RISCVInstrInfo::lowerBinaryOp(ir::BinaryOp *binOp,
   // Emit MC instructions.
   it->second(opDstReg, lhsReg, rhsReg, outInsts);
   uint32_t resultSlot = getStackSlot(binOp->getResult());
-  outInsts.push_back(mc::MCInstBuilder(riscv::SW).addReg(opDstReg).addMem(
-      riscv::SP, resultSlot));
+  Register tempReg = (opDstReg != riscv::T0) ? riscv::T0 : riscv::T1;
+  emitStoreWithOffset(opDstReg, riscv::SP, resultSlot, outInsts, tempReg);
 }
 
 void RISCVInstrInfo::lowerLoadOp(ir::LoadOp *loadOp,
@@ -176,8 +292,10 @@ void RISCVInstrInfo::lowerLoadOp(ir::LoadOp *loadOp,
   Register src = lowerOperand(ptr, Register::T0, outInsts);
   Value *result = loadOp->getResult();
   uint32_t resultSlot = getStackSlot(result);
-  outInsts.push_back(
-      mc::MCInstBuilder(riscv::SW).addReg(src).addMem(riscv::SP, resultSlot));
+
+  // Handle large offset using a temporary register.
+  Register temp = (riscv::T0 != src) ? riscv::T0 : riscv::T1;
+  emitStoreWithOffset(src, riscv::SP, resultSlot, outInsts, temp);
 }
 
 void RISCVInstrInfo::lowerStoreOp(ir::StoreOp *storeOp,
@@ -187,14 +305,19 @@ void RISCVInstrInfo::lowerStoreOp(ir::StoreOp *storeOp,
   Register valReg = lowerOperand(val, Register::T0, outInsts);
 
   Value *ptr = storeOp->getPointer();
+  Register tempReg = (valReg != riscv::T0) ? riscv::T0 : riscv::T1;
   if (isGlobalVariable(ptr)) {
     const std::string &varName = getGlobalVarName(ptr);
-    Register tempReg = (valReg != riscv::T0) ? riscv::T0 : riscv::T1;
     storeToGlobalVar(valReg, tempReg, outInsts, varName);
   } else {
     uint32_t ptrSlot = getStackSlot(ptr);
-    outInsts.push_back(
-        mc::MCInstBuilder(riscv::SW).addReg(valReg).addMem(riscv::SP, ptrSlot));
+    if (isElementPtr(ptr)) {
+      storeViaStackPointer(valReg, ptrSlot, tempReg, outInsts);
+      return;
+    }
+
+    // Handle large offset using a temporary register.
+    emitStoreWithOffset(valReg, riscv::SP, ptrSlot, outInsts, tempReg);
   }
 }
 
@@ -253,8 +376,8 @@ void RISCVInstrInfo::lowerCallOp(ir::CallOp *callOp,
     assert(arg && "CallOp argument cannot be null");
     Register tempReg = lowerOperand(arg, Register::T0, outInsts);
     uint32_t argOffset = (i - kMaxArgRegisters) * wordSize;
-    outInsts.push_back(mc::MCInstBuilder(riscv::SW).addReg(tempReg).addMem(
-        riscv::SP, argOffset));
+    Register tempForStore = (tempReg != riscv::T0) ? riscv::T0 : riscv::T1;
+    emitStoreWithOffset(tempReg, riscv::SP, argOffset, outInsts, tempForStore);
   }
 
   // CALL function
@@ -265,9 +388,55 @@ void RISCVInstrInfo::lowerCallOp(ir::CallOp *callOp,
   if (callOp->hasResult()) {
     Value *result = callOp->getResult();
     uint32_t resultSlot = getStackSlot(result);
-    outInsts.push_back(mc::MCInstBuilder(riscv::SW).addReg(riscv::A0).addMem(
-        riscv::SP, resultSlot));
+    emitStoreWithOffset(riscv::A0, riscv::SP, resultSlot, outInsts);
   }
+}
+
+/// Lower the given GetElemPtrOp to RISC-V instructions.
+void RISCVInstrInfo::lowerGetElemPtrOp(ir::GetElemPtrOp *gepOp,
+                                       std::vector<mc::MCInst> &outInsts) {
+  assert(gepOp && "GetElemPtrOp is null");
+  ir::Type *elemType = gepOp->getElementType();
+  ir::Value *base = gepOp->getBasePointer();
+  ir::Value *index = gepOp->getIndex();
+  uint32_t resultSlot = getStackSlot(gepOp->getResult());
+  markAsElementPtr(gepOp->getResult());
+
+  // Lower base pointer.
+  Register baseReg = riscv::T0;
+
+  if (isGlobalVariable(base)) {
+    const std::string &varName = getGlobalVarName(base);
+    getGlobalVarAddress(baseReg, varName, outInsts);
+  } else {
+    uint32_t baseSlot = getStackSlot(base);
+    addImmediateToRegister(baseReg, riscv::SP, static_cast<int32_t>(baseSlot),
+                           outInsts);
+  }
+  // Lower index.
+  Register indexReg = lowerOperand(index, Register::T1, outInsts);
+  if (indexReg == riscv::ZERO) {
+    // If index is ZERO, the effective address is just the base address.
+    Register temp = (baseReg != riscv::T0) ? riscv::T0 : riscv::T1;
+    emitStoreWithOffset(baseReg, riscv::SP, resultSlot, outInsts, temp);
+    return;
+  }
+
+  // Compute effective address: base + index * elemSize
+  size_t elemSize = getTypeSizeInBytes(elemType);
+  Register elemSizeReg = riscv::T2;
+  outInsts.push_back(mc::MCInstBuilder(riscv::LI)
+                         .addReg(elemSizeReg)
+                         .addImm(static_cast<int32_t>(elemSize)));
+  outInsts.push_back(mc::MCInstBuilder(riscv::MUL)
+                         .addReg(indexReg)
+                         .addReg(indexReg)
+                         .addReg(elemSizeReg));
+  outInsts.push_back(mc::MCInstBuilder(riscv::ADD)
+                         .addReg(baseReg)
+                         .addReg(baseReg)
+                         .addReg(indexReg));
+  emitStoreWithOffset(baseReg, riscv::SP, resultSlot, outInsts, indexReg);
 }
 
 /// Lower the given IR value to a given RISC-V register.
@@ -290,7 +459,7 @@ Register RISCVInstrInfo::lowerOperand(ir::Value *val, Register temp,
   // Check if the value is a global variable.
   if (isGlobalVariable(val)) {
     const std::string &varName = getGlobalVarName(val);
-    loadFromGlobalVar(temp, outInsts, varName);
+    loadFromGlobalVar(temp, varName, outInsts);
     return temp;
   }
 
@@ -303,10 +472,11 @@ Register RISCVInstrInfo::lowerOperand(ir::Value *val, Register temp,
     }
     // Argument is passed on the stack.
     uint32_t offset = (index - kMaxArgRegisters) * wordSize;
-    return loadFromStackWithBase(temp, outInsts, riscv::FP, offset);
+    return loadFromStackWithBase(temp, riscv::FP, offset, outInsts);
   }
 
-  return loadFromStackWithBase(temp, outInsts, riscv::SP, getStackSlot(val));
+  return loadFromStackWithBase(temp, riscv::SP, getStackSlot(val), outInsts,
+                               isElementPtr(val));
 }
 
 bool RISCVInstrInfo::isNeedStackForRa(const ir::Function *func) {
@@ -344,25 +514,19 @@ void RISCVInstrInfo::emitPrologue(std::vector<mc::MCInst> &outInsts,
                                   const uint32_t stackSize) {
   if (stackSize > 0) {
     // Adjust stack pointer: addi sp, sp, -stackSize
-    outInsts.push_back(mc::MCInstBuilder(riscv::ADDI)
-                           .addReg(riscv::SP)
-                           .addReg(riscv::SP)
-                           .addImm(-static_cast<int32_t>(stackSize)));
+    addImmediateToRegister(riscv::SP, riscv::SP,
+                           -static_cast<int32_t>(stackSize), outInsts);
     // Push return address and frame pointer if needed.
     if (raStackOffset.has_value()) {
-      outInsts.push_back(mc::MCInstBuilder(riscv::SW).addReg(riscv::RA).addMem(
-          riscv::SP, *raStackOffset));
+      emitStoreWithOffset(riscv::RA, riscv::SP, *raStackOffset, outInsts);
     }
     // Push frame pointer if needed.
     if (fpStackOffset.has_value()) {
-      outInsts.push_back(mc::MCInstBuilder(riscv::SW).addReg(riscv::FP).addMem(
-          riscv::SP, *fpStackOffset));
+      emitStoreWithOffset(riscv::FP, riscv::SP, *fpStackOffset, outInsts);
       // Set frame pointer to current stack pointer.
       // addi fp, sp, stackSize
-      outInsts.push_back(mc::MCInstBuilder(riscv::ADDI)
-                             .addReg(riscv::FP)
-                             .addReg(riscv::SP)
-                             .addImm(static_cast<int32_t>(stackSize)));
+      addImmediateToRegister(riscv::FP, riscv::SP,
+                             static_cast<int32_t>(stackSize), outInsts);
     }
   }
 }
@@ -372,19 +536,15 @@ void RISCVInstrInfo::emitEpilogue(std::vector<mc::MCInst> &outInsts,
   if (stackSize > 0) {
     // Pop return address.
     if (raStackOffset.has_value()) {
-      outInsts.push_back(mc::MCInstBuilder(riscv::LW).addReg(riscv::RA).addMem(
-          riscv::SP, *raStackOffset));
+      emitLoadWithOffset(riscv::RA, riscv::SP, *raStackOffset, outInsts);
     }
     // Pop frame pointer.
     if (fpStackOffset.has_value()) {
-      outInsts.push_back(mc::MCInstBuilder(riscv::LW).addReg(riscv::FP).addMem(
-          riscv::SP, *fpStackOffset));
+      emitLoadWithOffset(riscv::FP, riscv::SP, *fpStackOffset, outInsts);
     }
     // Restore stack pointer: addi sp, sp, stackSize
-    outInsts.push_back(mc::MCInstBuilder(riscv::ADDI)
-                           .addReg(riscv::SP)
-                           .addReg(riscv::SP)
-                           .addImm(static_cast<int32_t>(stackSize)));
+    addImmediateToRegister(riscv::SP, riscv::SP,
+                           static_cast<int32_t>(stackSize), outInsts);
   }
 }
 

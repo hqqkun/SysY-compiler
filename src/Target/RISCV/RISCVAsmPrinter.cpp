@@ -77,24 +77,51 @@ void RISCVAsmPrinter::emitGlobalVarDecl(const ir::GlobalVarDecl *varDecl) {
   assert(varDecl && "GlobalVarDecl is null");
   ir::GlobalAlloc *alloc = varDecl->getAllocation();
   assert(alloc && "GlobalAlloc is null");
-  size_t allocSize = alloc->getAllocSize();
-  // TODO: Support array global allocation.
-  assert(allocSize == 1 && "Only single element global alloc supported");
 
   const std::string &varName = varDecl->getIdent();
   out << "\t" << kDataSection << std::endl;
   out << "\t" << kGlobalDirective << " " << varName << std::endl;
   emitLabel(varName);
 
-  // Print initial value if exists.
-  ir::Value *initValue = alloc->getInitValue();
-  if (initValue) {
-    assert(initValue->getType()->isInteger() &&
-           "Only integer initial value is supported");
-    ir::Integer *intVal = static_cast<ir::Integer *>(initValue);
-    out << "\t" << kWordDirective << " " << intVal->getValue() << std::endl;
-  } else {
-    out << "\t" << kZeroInit << " " << allocSize * wordSize << std::endl;
+  if (alloc->isSingle()) {
+    // Print initial value if exists.
+    ir::Value *initValue = alloc->getInitValue();
+    if (initValue) {
+      assert(initValue->getType()->isInteger() &&
+             "Only integer initial value is supported");
+      ir::Integer *intVal = static_cast<ir::Integer *>(initValue);
+      out << "\t" << kWordDirective << " " << intVal->getValue() << std::endl;
+    } else {
+      out << "\t" << kZeroInit << " " << wordSize << std::endl;
+    }
+    out << std::endl;
+    return;
+  }
+
+  if (alloc->isMultiple()) {
+    const auto &initValues = alloc->getInitValues();
+    auto *arrayType = dynamic_cast<ir::ArrayType *>(alloc->getElementType());
+    assert(arrayType && "Multi-value initializer must be array type");
+    size_t totalSize = RISCVInstrInfo::getTypeSizeInBytes(arrayType);
+    if (initValues.empty()) {
+      out << "\t" << kZeroInit << " " << totalSize << std::endl;
+      out << std::endl;
+      return;
+    }
+    size_t arraySize = arrayType->getSize();
+    // Print all provided initial values.
+    size_t printedCount = 0;
+    for (ir::Value *init : initValues) {
+      assert(init->getType()->isInteger() &&
+             "Only integer initial values are supported");
+      ir::Integer *intVal = static_cast<ir::Integer *>(init);
+      out << "\t" << kWordDirective << " " << intVal->getValue() << std::endl;
+      printedCount++;
+    }
+    // Zero-initialize the remaining elements.
+    for (size_t i = printedCount; i < arraySize; ++i) {
+      out << "\t" << kWordDirective << " 0" << std::endl;
+    }
   }
 
   out << std::endl;

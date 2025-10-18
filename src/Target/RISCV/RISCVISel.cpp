@@ -46,6 +46,14 @@ RISCVISel::selectInstructions(const ir::Function *func) {
     for (ir::Operation *op : *bb) {
       assert(op && "Operation is null");
       if (op->hasResult()) {
+        // Local allocations may have different sizes. (Arrays, single
+        // variables, etc.)
+        if (auto *alloc = dynamic_cast<ir::LocalAlloc *>(op)) {
+          uint32_t typeSize =
+              RISCVInstrInfo::getTypeSizeInBytes(alloc->getElementType());
+          instrInfo.addStackSlot(op->getResult(), typeSize);
+          continue;
+        }
         instrInfo.addStackSlot(op->getResult());
       }
     }
@@ -80,6 +88,8 @@ RISCVISel::selectInstructions(const ir::Function *func) {
         instrInfo.lowerJumpOp(jump, mcInsts);
       } else if (auto *call = dynamic_cast<ir::CallOp *>(op)) {
         instrInfo.lowerCallOp(call, mcInsts);
+      } else if (auto *gep = dynamic_cast<ir::GetElemPtrOp *>(op)) {
+        instrInfo.lowerGetElemPtrOp(gep, mcInsts);
       } else {
         // Handle other operation types here.
         // For now, we can just ignore them or throw an error.

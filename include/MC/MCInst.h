@@ -22,14 +22,13 @@ private:
 
 class MCMemory {
 public:
-  constexpr MCMemory(uint64_t base, uint32_t off)
-      : baseReg(base), offset(off) {}
+  constexpr MCMemory(uint64_t base, int32_t off) : baseReg(base), offset(off) {}
   constexpr const MCRegister &getBaseReg() const { return baseReg; }
-  constexpr uint32_t getOffset() const { return offset; }
+  constexpr int32_t getOffset() const { return offset; }
 
 private:
   MCRegister baseReg;
-  uint32_t offset;
+  int32_t offset;
 };
 
 class MCLabel {
@@ -50,10 +49,10 @@ class MCOperand {
     kLabel      // Label operand.
   };
 
-  using OperandValue = std::variant<uint64_t,                      // RegVal
-                                    int32_t,                       // ImmVal
-                                    std::pair<uint64_t, uint32_t>, // MemVal
-                                    std::string_view               // LabelVal
+  using OperandValue = std::variant<uint64_t,                     // RegVal
+                                    int32_t,                      // ImmVal
+                                    std::pair<uint64_t, int32_t>, // MemVal
+                                    std::string_view              // LabelVal
                                     >;
 
 public:
@@ -86,7 +85,7 @@ public:
 
   MCMemory getMem() const {
     assert(isMem() && "This is not a memory operand");
-    auto [base, offset] = std::get<std::pair<uint64_t, uint32_t>>(value);
+    auto [base, offset] = std::get<std::pair<uint64_t, int32_t>>(value);
     return MCMemory(base, offset);
   }
 

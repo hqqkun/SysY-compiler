@@ -264,6 +264,9 @@ public:
   explicit GetElemPtrOp(IRContext &context, Value *basePtr, Value *index);
   Value *getBasePointer() const { return getOperand(0); }
   Value *getIndex() const { return getOperand(1); }
+  Type *getElementType() const {
+    return static_cast<PointerType *>(resultType)->getPointeeType();
+  }
 
   std::string_view getOpName() const override { return "getelemptr"; }
 };
