@@ -22,7 +22,7 @@ public:
     return *this;
   }
 
-  MCInstBuilder &addMem(uint64_t baseReg, uint32_t offset) {
+  MCInstBuilder &addMem(uint64_t baseReg, int32_t offset) {
     inst.addOperand(MCOperand::createMem(baseReg, offset));
     return *this;
   }
