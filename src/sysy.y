@@ -35,6 +35,9 @@ void yyerror(std::unique_ptr<ast::BaseAST>& ast, const char* s);
   std::vector<ast::FuncFParamPtr>* funcFParamVec;
   std::vector<ast::FuncRParamPtr>* funcRParamVec;
   std::vector<ast::ConstExpPtr>* constExpVec;
+  std::vector<ast::ConstExpPtr>* indexExpVec;
+  std::vector<ast::ConstInitValASTPtr>* constInitValVec;
+  std::vector<ast::InitValASTPtr>* initValVec;
   std::vector<ast::ExprPtr>* exprVec;
   ast::FuncFParamAST* funcFParam;
   ast::BlockItemAST* blockItem;
@@ -57,7 +60,9 @@ void yyerror(std::unique_ptr<ast::BaseAST>& ast, const char* s);
 %type <astVec> ConstDefList
 %type <astVec> VarDefList
 %type <astVec> CompUnitList
-%type <constExpVec> ConstExpList
+%type <indexExpVec> IndexExpList
+%type <constInitValVec> ConstInitValList
+%type <initValVec> InitValList
 %type <exprVec> ExprList
 %type <blockItemVec> BlockItemList
 %type <funcFParamVec> FuncFParamList
@@ -211,12 +216,25 @@ ConstDef
       auto init = std::unique_ptr<ast::ConstInitValAST>($3);
       $$ = new ast::ConstDefAST(var, std::move(init));
     }
-    | IDENT '[' ConstExp ']' T_ASSIGN ConstInitVal {
+    | IDENT IndexExpList T_ASSIGN ConstInitVal {
       // Array variable with initialization.
       auto var = *std::unique_ptr<std::string>($1);
-      auto size = std::unique_ptr<ast::ConstExpAST>($3);
-      auto init = std::unique_ptr<ast::ConstInitValAST>($6);
-      $$ = new ast::ConstDefAST(var, std::move(size), std::move(init));
+      auto sizes = std::unique_ptr<std::vector<ast::ConstExpPtr>>($2);
+      auto init = std::unique_ptr<ast::ConstInitValAST>($4);
+      $$ = new ast::ConstDefAST(var, std::move(sizes), std::move(init));
+    }
+    ;
+
+IndexExpList
+    : '[' ConstExp ']' {
+      auto vec = new std::vector<ast::ConstExpPtr>();
+      vec->emplace_back($2);
+      $$ = vec;
+    }
+    | IndexExpList '[' ConstExp ']' {
+      auto vec = $1;
+      vec->emplace_back($3);
+      $$ = vec;
     }
     ;
 
@@ -225,23 +243,23 @@ ConstInitVal
       auto exp = std::unique_ptr<ast::ConstExpAST>($1);
       $$ = new ast::ConstInitValAST(std::move(exp));
     }
-    | '{' ConstExpList '}' {
-      auto list = std::unique_ptr<std::vector<ast::ConstExpPtr>>($2);
+    | '{' ConstInitValList '}' {
+      auto list = std::unique_ptr<std::vector<ast::ConstInitValASTPtr>>($2);
       $$ = new ast::ConstInitValAST(std::move(list));
     }
     ;
 
-ConstExpList
+ConstInitValList
     : /* empty */ {
-      auto vec = new std::vector<ast::ConstExpPtr>();
+      auto vec = new std::vector<ast::ConstInitValASTPtr>();
       $$ = vec;
     }
-    | ConstExp {
-      auto vec = new std::vector<ast::ConstExpPtr>();
+    | ConstInitVal {
+      auto vec = new std::vector<ast::ConstInitValASTPtr>();
       vec->emplace_back($1);
       $$ = vec;
     }
-    | ConstExpList ',' ConstExp {
+    | ConstInitValList ',' ConstInitVal {
       auto vec = $1;
       vec->emplace_back($3);
       $$ = vec;
@@ -257,16 +275,16 @@ VarDef
       auto init = std::unique_ptr<ast::InitValAST>($3);
       $$ = new ast::VarDefAST(var, std::move(init));
     }
-    | IDENT '[' ConstExp ']' {
+    | IDENT IndexExpList {
       auto var = *std::unique_ptr<std::string>($1);
-      auto size = std::unique_ptr<ast::ConstExpAST>($3);
-      $$ = new ast::VarDefAST(var, std::move(size));
+      auto sizes = std::unique_ptr<std::vector<ast::ConstExpPtr>>($2);
+      $$ = new ast::VarDefAST(var, std::move(sizes));
     }
-    | IDENT '[' ConstExp ']' T_ASSIGN InitVal {
+    | IDENT IndexExpList T_ASSIGN InitVal {
       auto var = *std::unique_ptr<std::string>($1);
-      auto size = std::unique_ptr<ast::ConstExpAST>($3);
-      auto init = std::unique_ptr<ast::InitValAST>($6);
-      $$ = new ast::VarDefAST(var, std::move(size), std::move(init));
+      auto sizes = std::unique_ptr<std::vector<ast::ConstExpPtr>>($2);
+      auto init = std::unique_ptr<ast::InitValAST>($4);
+      $$ = new ast::VarDefAST(var, std::move(sizes), std::move(init));
     }
     ;
 
@@ -275,23 +293,35 @@ InitVal
       auto exp = std::unique_ptr<ast::ExprAST>(static_cast<ast::ExprAST*>($1));
       $$ = new ast::InitValAST(std::move(exp));
     }
-    | '{' ExprList '}' {
-      auto list = std::unique_ptr<std::vector<ast::ExprPtr>>($2);
+    | '{' InitValList '}' {
+      auto list = std::unique_ptr<std::vector<ast::InitValASTPtr>>($2);
       $$ = new ast::InitValAST(std::move(list));
     }
     ;
 
-ExprList
+InitValList
     : /* empty */ {
-      auto vec = new std::vector<ast::ExprPtr>();
+      auto vec = new std::vector<ast::InitValASTPtr>();
       $$ = vec;
     }
-    | EXP {
-      auto vec = new std::vector<ast::ExprPtr>();
-      vec->emplace_back(static_cast<ast::ExprAST*>($1));
+    | InitVal {
+      auto vec = new std::vector<ast::InitValASTPtr>();
+      vec->emplace_back($1);
       $$ = vec;
     }
-    | ExprList ',' EXP {
+    | InitValList ',' InitVal {
+      auto vec = $1;
+      vec->emplace_back($3);
+      $$ = vec;
+    }
+
+ExprList
+    : '[' EXP ']' {
+      auto vec = new std::vector<ast::ExprPtr>();
+      vec->emplace_back(static_cast<ast::ExprAST*>($2));
+      $$ = vec;
+    }
+    | ExprList '[' EXP ']' {
       auto vec = $1;
       vec->emplace_back(static_cast<ast::ExprAST*>($3));
       $$ = vec;
@@ -382,10 +412,10 @@ LVal
       auto var = *std::unique_ptr<std::string>($1);
       $$ = new ast::LValAST(var);
     }
-    | IDENT '[' EXP ']' {
+    | IDENT ExprList {
       auto var = *std::unique_ptr<std::string>($1);
-      auto index = std::unique_ptr<ast::ExprAST>(static_cast<ast::ExprAST*>($3));
-      $$ = new ast::LValAST(var, std::move(index));
+      auto indices = std::unique_ptr<std::vector<ast::ExprPtr>>($2);
+      $$ = new ast::LValAST(var, std::move(indices));
     }
     ;
 

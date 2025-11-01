@@ -1,7 +1,9 @@
 #include <cassert>
 #include <functional>
+#include <numeric>
 #include <string>
 #include <variant>
+#include <vector>
 
 #include "AST/AST.h"
 #include "AST/Ops.h"
@@ -11,11 +13,26 @@
 #include "IR/IRBuilder.h"
 #include "IR/Module.h"
 #include "IR/Operation.h"
+#include "IR/Value.h"
 #include "Utils/Utils.h"
 
 using namespace ast;
 
 namespace conversion {
+
+/// Helper functions.
+void updateIndicesWithAlign(const std::vector<size_t> &dims,
+                            std::vector<size_t> &indices, size_t &alignDim) {
+  for (int64_t i = dims.size() - 1; i >= 0; --i) {
+    indices[i]++;
+    if (indices[i] < dims[i]) {
+      break;
+    } else if (i > 0) {
+      indices[i] = 0;
+      alignDim = i - 1;
+    }
+  }
+}
 
 /// Convert AST Type to IR Type.
 /// If the type is void, return std::nullopt.
@@ -45,6 +62,130 @@ static std::optional<ir::Type *> ASTType2IRType(ir::IRContext &context,
     }
   }
   assert(false && "Unsupported AST type kind");
+}
+
+ir::Value *IRGen::computeArrayElementPtr(ir::IRBuilder &builder,
+                                         ir::Value *basePtr,
+                                         const std::vector<ExprPtr> &indices) {
+  assert(!indices.empty() && "Array indices cannot be empty");
+  std::vector<ir::Value *> indexValues;
+  for (const auto &indexExpr : indices) {
+    ir::Value *indexValue = dispatchAndConvert(builder, indexExpr.get());
+    indexValues.push_back(indexValue);
+  }
+
+  // Chain together GetElemPtr operations to calculate the final element
+  // pointer.
+  ir::Value *currentPtr = basePtr;
+  for (const auto &indexValue : indexValues) {
+    currentPtr =
+        builder.create<ir::GetElemPtrOp>(currentPtr, indexValue)->getResult();
+  }
+  return currentPtr;
+}
+
+std::vector<size_t>
+IRGen::evaluateArraySizes(std::vector<ConstExpPtr> &arraySizes) {
+  std::vector<size_t> sizes;
+  for (const auto &sizeExp : arraySizes) {
+    int32_t sizeValue = interpreter.evalConstExp(sizeExp.get());
+    assert(sizeValue > 0 && "Array size must be positive");
+    sizes.push_back(static_cast<size_t>(sizeValue));
+  }
+  return sizes;
+}
+
+template <typename NodeType, typename GetChildrenFunc,
+          typename ValueExtractorType>
+void IRGen::flattenGenericNode(ir::IRBuilder &builder, NodeType *node,
+                               size_t &alignDim,
+                               const std::vector<size_t> &dims,
+                               std::vector<size_t> &indices,
+                               std::vector<ir::Value *> &result,
+                               const GetChildrenFunc &getChildren,
+                               const ValueExtractorType &valueExtractor) {
+  if (node->isScalar()) {
+    result.push_back(valueExtractor(builder, node));
+    updateIndicesWithAlign(dims, indices, alignDim);
+    return;
+  }
+
+  assert(node->isArray() && "Node must be either scalar or array");
+  size_t currentAlignDim = alignDim;
+  size_t nextAlignIndex = indices[currentAlignDim] + 1;
+
+  for (auto &child : *getChildren(node)) {
+    flattenGenericNode(builder, child.get(), alignDim, dims, indices, result,
+                       getChildren, valueExtractor);
+  }
+
+  // Fill zero for remaining elements.
+  ir::Value *zero = ir::Integer::get(context, 0, 32);
+  while (alignDim >= currentAlignDim &&
+         indices[currentAlignDim] < nextAlignIndex) {
+    result.push_back(zero);
+    updateIndicesWithAlign(dims, indices, alignDim);
+  }
+}
+
+template <typename NodeType, typename ContainerType, typename GetChildrenFunc,
+          typename ValueExtractorType>
+void IRGen::flattenGenericInitList(ir::IRBuilder &builder,
+                                   ContainerType &initList,
+                                   const std::vector<size_t> &dims,
+                                   std::vector<ir::Value *> &result,
+                                   const GetChildrenFunc &getChildren,
+                                   const ValueExtractorType &valueExtractor) {
+  assert(!dims.empty() && "Array must have at least one dimension");
+  result.clear();
+  std::vector<size_t> indices(dims.size(), 0);
+  size_t outerDim = dims[0];
+  size_t alignDim = 0; // Start aligning from the outermost dimension.
+
+  for (auto &node : initList) {
+    flattenGenericNode<NodeType>(builder, node.get(), alignDim, dims, indices,
+                                 result, getChildren, valueExtractor);
+  }
+  ir::Value *zero = ir::Integer::get(context, 0, 32);
+  while (indices[0] < outerDim) {
+    result.push_back(zero);
+    updateIndicesWithAlign(dims, indices, alignDim);
+  }
+
+  // Sanity check.
+  size_t expectedSize = std::accumulate(dims.begin(), dims.end(), 1ULL,
+                                        std::multiplies<size_t>());
+  assert(result.size() == expectedSize &&
+         "Flattened initializer list size does not match expected array size");
+}
+
+void IRGen::flattenInitList(ir::IRBuilder &builder,
+                            std::vector<InitValASTPtr> &initList,
+                            const std::vector<size_t> &dims,
+                            std::vector<ir::Value *> &result) {
+  auto extractValue = [this](ir::IRBuilder &builder,
+                             InitValAST *node) -> ir::Value * {
+    return dispatchAndConvert(builder, node->exp.get());
+  };
+  auto getChildren = [](InitValAST *node) { return node->initValVec.get(); };
+  flattenGenericInitList<InitValAST>(builder, initList, dims, result,
+                                     getChildren, extractValue);
+}
+
+void IRGen::flattenConstInitList(ir::IRBuilder &builder,
+                                 std::vector<ast::ConstInitValASTPtr> &initList,
+                                 const std::vector<size_t> &dims,
+                                 std::vector<ir::Value *> &result) {
+  auto extractConstValue = [this](ir::IRBuilder &builder,
+                                  ConstInitValAST *node) -> ir::Value * {
+    int32_t value = interpreter.evalConstExp(node->constExp.get());
+    return ir::Integer::get(context, value);
+  };
+  auto getChildren = [](ConstInitValAST *node) {
+    return node->constInitVec.get();
+  };
+  flattenGenericInitList<ast::ConstInitValAST>(builder, initList, dims, result,
+                                               getChildren, extractConstValue);
 }
 
 ir::Value *IRGen::dispatchAndConvert(ir::IRBuilder &builder, BaseAST *ast) {
@@ -225,12 +366,9 @@ ir::Value *IRGen::convertLval(ir::IRBuilder &builder, LValAST *lvalAST) {
       return builder.create<ir::LoadOp>(lvalPtr)->getResult();
     }
     assert(lvalAST->isArray() && "LVal must be either scalar or array");
-    ir::Value *idx =
-        dispatchAndConvert(builder, lvalAST->arrayIndex->exp.get());
-    return builder
-        .create<ir::LoadOp>(
-            builder.create<ir::GetElemPtrOp>(lvalPtr, idx)->getResult())
-        ->getResult();
+    ir::Value *elementPtr =
+        computeArrayElementPtr(builder, lvalPtr, *(lvalAST->arrayIndices));
+    return builder.create<ir::LoadOp>(elementPtr)->getResult();
   } else {
     assert(std::holds_alternative<int32_t>(lval) &&
            "LVal symbol table entry must contain either a variable pointer or "
@@ -352,12 +490,9 @@ void IRGen::convertAssignStmt(ir::IRBuilder &builder,
 
   // Array assignment.
   if (lvalAST->isArray()) {
-    ir::Value *idx =
-        dispatchAndConvert(builder, lvalAST->arrayIndex->exp.get());
-    assert(idx && "Array index cannot be null in assignment");
-    ir::Value *elemPtr =
-        builder.create<ir::GetElemPtrOp>(targetPtr, idx)->getResult();
-    builder.create<ir::StoreOp>(rhsValue, elemPtr);
+    ir::Value *elementPtr =
+        computeArrayElementPtr(builder, targetPtr, *(lvalAST->arrayIndices));
+    builder.create<ir::StoreOp>(rhsValue, elementPtr);
     return;
   }
   assert(false && "LVal must be either scalar or array in assignment");
@@ -505,22 +640,16 @@ void IRGen::convertConstDef(ir::IRBuilder &builder, ConstDefAST *constDefAST,
     assert(constInitVal->isArray() &&
            "Array ConstDef must have array initializer");
     // Compute array size.
-    int32_t arraySize = interpreter.evalExpr(
-        dynamic_cast<ExprAST *>(constDefAST->arraySize->exp.get()));
-    assert(arraySize > 0 && "Array size must be positive");
-    ir::ArrayType *arrayType = ir::ArrayType::get(context, bType, arraySize);
+    std::vector<size_t> arraySizes =
+        evaluateArraySizes(*constDefAST->arraySizes.get());
+    ir::ArrayType *arrayType = ir::ArrayType::get(context, bType, arraySizes);
 
     // Distinguish between global and local array constant definitions.
     if (isGlobal) {
       std::string varName = constDefAST->var;
-      std::list<ir::Value *> initValues;
-      const auto &initVec = *constInitVal->constExpVec.get();
-      for (const auto &init : initVec) {
-        int32_t val =
-            interpreter.evalExpr(dynamic_cast<ExprAST *>(init->exp.get()));
-        ir::Integer *irVal = ir::Integer::get(context, val, 32);
-        initValues.push_back(irVal);
-      }
+      std::vector<ir::Value *> initValues;
+      flattenConstInitList(builder, *constInitVal->constInitVec, arraySizes,
+                           initValues);
       auto *alloc =
           ir::GlobalAlloc::create(context, varName, arrayType, initValues);
       auto *constDecl = ir::GlobalVarDecl::create(context, varName, alloc);
@@ -532,14 +661,10 @@ void IRGen::convertConstDef(ir::IRBuilder &builder, ConstDefAST *constDefAST,
       ir::Value *alloc =
           builder.create<ir::LocalAlloc>(varName, arrayType, true)->getResult();
       varTables.setValue(constDefAST->var, alloc);
-
-      const auto &initVec = *constInitVal->constExpVec.get();
-      initializeLocalArray(
-          builder, alloc, arraySize, initVec.size(), [&](size_t i) {
-            int32_t val = interpreter.evalExpr(
-                dynamic_cast<ExprAST *>(initVec[i]->exp.get()));
-            return ir::Integer::get(context, val, 32);
-          });
+      std::vector<ir::Value *> initValues;
+      flattenConstInitList(builder, *constInitVal->constInitVec, arraySizes,
+                           initValues);
+      initializeLocalArray(builder, alloc, arraySizes, initValues);
     }
     return;
   }
@@ -586,12 +711,11 @@ void IRGen::convertLocalVarDef(ir::IRBuilder &builder, VarDefAST *varDefAST,
   }
 
   if (varDefAST->isArray()) {
-    assert(varDefAST->arraySize && "Array variable must have a size");
-    int32_t arraySize = interpreter.evalExpr(
-        dynamic_cast<ExprAST *>(varDefAST->arraySize->exp.get()));
-    assert(arraySize > 0 && "Array size must be positive");
+    assert(varDefAST->arraySizes && "Array variable must have a size");
+    std::vector<size_t> arraySizes =
+        evaluateArraySizes(*varDefAST->arraySizes.get());
     ir::ArrayType *arrayType =
-        ir::ArrayType::get(context, allocType, arraySize);
+        ir::ArrayType::get(context, allocType, arraySizes);
 
     ir::Value *alloc =
         builder.create<ir::LocalAlloc>(varName, arrayType, true)->getResult();
@@ -604,43 +728,51 @@ void IRGen::convertLocalVarDef(ir::IRBuilder &builder, VarDefAST *varDefAST,
     InitValAST *initValAST = varDefAST->initVal.get();
     assert(initValAST->isArray() &&
            "Array variable must have array initializer");
-    const auto &initVec = *initValAST->initValVec.get();
-
-    initializeLocalArray(
-        builder, alloc, arraySize, initVec.size(), [&](size_t i) {
-          return dispatchAndConvert(builder, initVec[i]->exp.get());
-        });
+    std::vector<ir::Value *> flattenedInits;
+    flattenInitList(builder, *varDefAST->initVal->initValVec.get(), arraySizes,
+                    flattenedInits);
+    initializeLocalArray(builder, alloc, arraySizes, flattenedInits);
     return;
   }
 
   assert(false && "Unknown VarDef type");
 }
 
-void IRGen::initializeLocalArray(
-    ir::IRBuilder &builder, ir::Value *alloc, size_t arraySize,
-    size_t initCount, std::function<ir::Value *(size_t)> getInitValue) {
+void IRGen::initializeLocalArray(ir::IRBuilder &builder, ir::Value *alloc,
+                                 const std::vector<size_t> &dims,
+                                 const std::vector<ir::Value *> &initValues) {
   assert(alloc && "Array allocation cannot be null");
-  assert(initCount <= arraySize && "Initializer size exceeds array size");
+  assert(!dims.empty() && "Array dimensions cannot be empty");
+  size_t totalSize = std::accumulate(dims.begin(), dims.end(), 1ULL,
+                                     std::multiplies<size_t>());
 
-  // Initialize the elements with provided initial values.
-  for (size_t i = 0; i < initCount; ++i) {
-    // Callback to get the i-th initial value.
-    ir::Value *initValue = getInitValue(i);
-    ir::Integer *idx = ir::Integer::get(context, static_cast<int>(i), 32);
-    ir::Value *elemPtr =
-        builder.create<ir::GetElemPtrOp>(alloc, idx)->getResult();
-    builder.create<ir::StoreOp>(initValue, elemPtr);
-  }
+  // The initialization values should already be flattened.
+  assert(initValues.size() == totalSize &&
+         "Initializer size does not match array size");
+  std::vector<size_t> indices(dims.size(), 0);
 
-  // Zero-initialize the remaining elements.
-  if (initCount < arraySize) {
-    ir::Integer *zero = ir::Integer::get(context, 0, 32);
-    for (size_t i = initCount; i < arraySize; ++i) {
-      ir::Integer *idx = ir::Integer::get(context, static_cast<int>(i), 32);
-      ir::Value *elemPtr =
-          builder.create<ir::GetElemPtrOp>(alloc, idx)->getResult();
-      builder.create<ir::StoreOp>(zero, elemPtr);
+  auto updateIndices = [&]() {
+    for (int64_t i = dims.size() - 1; i >= 0; --i) {
+      indices[i]++;
+      if (indices[i] < dims[i]) {
+        break;
+      } else if (i > 0) {
+        indices[i] = 0;
+      }
     }
+  };
+
+  for (size_t i = 0; i < totalSize; ++i) {
+    ir::Value *initValue = initValues[i];
+    // Compute the element pointer using the current indices.
+    ir::Value *elemPtr = alloc;
+    for (size_t j = 0; j < dims.size(); ++j) {
+      ir::Integer *idx =
+          ir::Integer::get(context, static_cast<int>(indices[j]), 32);
+      elemPtr = builder.create<ir::GetElemPtrOp>(elemPtr, idx)->getResult();
+    }
+    builder.create<ir::StoreOp>(initValue, elemPtr);
+    updateIndices();
   }
 }
 
@@ -674,21 +806,17 @@ void IRGen::convertGlobalVarDef(ir::IRBuilder &builder, VarDefAST *varDefAST,
   }
 
   if (varDefAST->isArray()) {
-    assert(varDefAST->arraySize && "Array variable must have a size");
-    int32_t arraySize = interpreter.evalExpr(
-        dynamic_cast<ExprAST *>(varDefAST->arraySize->exp.get()));
-    assert(arraySize > 0 && "Array size must be positive");
-    auto *arrayType = ir::ArrayType::get(context, allocType, arraySize);
-    std::list<ir::Value *> initValues;
+    assert(varDefAST->arraySizes && "Array variable must have a size");
+    std::vector<size_t> arraySizes =
+        evaluateArraySizes(*varDefAST->arraySizes.get());
+    auto *arrayType = ir::ArrayType::get(context, allocType, arraySizes);
+    std::vector<ir::Value *> initValues;
     if (varDefAST->initVal) {
       InitValAST *initValAST = varDefAST->initVal.get();
       assert(initValAST->isArray() &&
              "Array variable must have array initializer");
-      const auto &initVec = *initValAST->initValVec.get();
-      for (const auto &init : initVec) {
-        ir::Value *val = dispatchAndConvert(builder, init->exp.get());
-        initValues.push_back(val);
-      }
+      flattenInitList(builder, *initValAST->initValVec.get(), arraySizes,
+                      initValues);
     }
     auto *array =
         ir::GlobalAlloc::create(context, varName, arrayType, initValues);

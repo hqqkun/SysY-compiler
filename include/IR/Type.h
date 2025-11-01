@@ -95,6 +95,8 @@ public:
   size_t getSize() const { return size; }
 
   static ArrayType *get(IRContext &context, Type *elementType, size_t size);
+  static ArrayType *get(IRContext &context, Type *elementType,
+                        const std::vector<size_t> &dims);
 
 private:
   Type *elementType;

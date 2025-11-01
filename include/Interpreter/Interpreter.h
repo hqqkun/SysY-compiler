@@ -15,6 +15,7 @@ class Interpreter {
 public:
   explicit Interpreter(SymbolTable &table) : varTables(table) {}
   int32_t evalExpr(ast::ExprAST *expr) const;
+  int32_t evalConstExp(ast::ConstExpAST *constExp) const;
 
 private:
   SymbolTable &varTables;
@@ -23,7 +24,7 @@ private:
   int32_t evalPrimaryExp(ast::PrimaryExpAST *primaryExp) const;
   int32_t evalUnaryExp(ast::UnaryExpAST *unaryExp) const;
   int32_t evalLVal(ast::LValAST *lval) const;
-  int32_t evalConstExp(ast::ConstExpAST *constExp) const;
+
   int32_t evalBinaryExp(ast::BinaryExpAST *binaryExp) const;
 };
 

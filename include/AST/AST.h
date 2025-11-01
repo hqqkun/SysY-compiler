@@ -101,18 +101,19 @@ public:
 class ConstDefAST : public BaseAST {
 public:
   std::string var;
-  ConstExpPtr arraySize;
+  std::unique_ptr<std::vector<ConstExpPtr>> arraySizes;
   ConstInitValASTPtr initVal;
 
   bool isScalar() const { return type == Type::SCALAR; }
   bool isArray() const { return type == Type::ARRAY; }
 
   ConstDefAST(const std::string &name, ConstInitValASTPtr init)
-      : var(name), arraySize(nullptr), initVal(std::move(init)),
+      : var(name), arraySizes(nullptr), initVal(std::move(init)),
         type(Type::SCALAR) {}
-  ConstDefAST(const std::string &name, ConstExpPtr size,
+  ConstDefAST(const std::string &name,
+              std::unique_ptr<std::vector<ConstExpPtr>> sizes,
               ConstInitValASTPtr init)
-      : var(name), arraySize(std::move(size)), initVal(std::move(init)),
+      : var(name), arraySizes(std::move(sizes)), initVal(std::move(init)),
         type(Type::ARRAY) {}
 
 private:
@@ -122,14 +123,14 @@ private:
 class ConstInitValAST : public BaseAST {
 public:
   ConstExpPtr constExp;
-  std::unique_ptr<std::vector<ConstExpPtr>> constExpVec;
+  std::unique_ptr<std::vector<ConstInitValASTPtr>> constInitVec;
   bool isScalar() const { return type == Type::SCALAR; }
   bool isArray() const { return type == Type::ARRAY; }
 
   ConstInitValAST(ConstExpPtr exp)
-      : constExp(std::move(exp)), constExpVec(nullptr), type(Type::SCALAR) {}
-  ConstInitValAST(std::unique_ptr<std::vector<ConstExpPtr>> exps)
-      : constExp(nullptr), constExpVec(std::move(exps)), type(Type::ARRAY) {}
+      : constExp(std::move(exp)), constInitVec(nullptr), type(Type::SCALAR) {}
+  ConstInitValAST(std::unique_ptr<std::vector<ConstInitValASTPtr>> inits)
+      : constExp(nullptr), constInitVec(std::move(inits)), type(Type::ARRAY) {}
 
 private:
   enum class Type { SCALAR, ARRAY } type;
@@ -139,20 +140,22 @@ class VarDefAST : public BaseAST {
 public:
   std::string var;
   InitValASTPtr initVal;
-  ConstExpPtr arraySize;
+  std::unique_ptr<std::vector<ConstExpPtr>> arraySizes;
   bool isScalar() const { return type == Type::SCALAR; }
   bool isArray() const { return type == Type::ARRAY; }
 
   VarDefAST(const std::string &name, InitValASTPtr init)
-      : var(name), initVal(std::move(init)), arraySize(nullptr),
+      : var(name), initVal(std::move(init)), arraySizes(nullptr),
         type(Type::SCALAR) {}
   VarDefAST(const std::string &name)
-      : var(name), initVal(nullptr), arraySize(nullptr), type(Type::SCALAR) {}
-  VarDefAST(const std::string &name, ConstExpPtr size)
-      : var(name), initVal(nullptr), arraySize(std::move(size)),
+      : var(name), initVal(nullptr), arraySizes(nullptr), type(Type::SCALAR) {}
+  VarDefAST(const std::string &name,
+            std::unique_ptr<std::vector<ConstExpPtr>> sizes)
+      : var(name), initVal(nullptr), arraySizes(std::move(sizes)),
         type(Type::ARRAY) {}
-  VarDefAST(const std::string &name, ConstExpPtr size, InitValASTPtr init)
-      : var(name), initVal(std::move(init)), arraySize(std::move(size)),
+  VarDefAST(const std::string &name,
+            std::unique_ptr<std::vector<ConstExpPtr>> sizes, InitValASTPtr init)
+      : var(name), initVal(std::move(init)), arraySizes(std::move(sizes)),
         type(Type::ARRAY) {}
 
 private:
@@ -162,13 +165,13 @@ private:
 class InitValAST : public BaseAST {
 public:
   ExprPtr exp;
-  std::unique_ptr<std::vector<ExprPtr>> initValVec;
+  std::unique_ptr<std::vector<InitValASTPtr>> initValVec;
   bool isScalar() const { return type == Type::SCALAR; }
   bool isArray() const { return type == Type::ARRAY; }
 
   InitValAST(ExprPtr e)
       : exp(std::move(e)), initValVec(nullptr), type(Type::SCALAR) {}
-  InitValAST(std::unique_ptr<std::vector<ExprPtr>> exps)
+  InitValAST(std::unique_ptr<std::vector<InitValASTPtr>> exps)
       : exp(nullptr), initValVec(std::move(exps)), type(Type::ARRAY) {}
 
 private:
@@ -269,14 +272,14 @@ public:
 class LValAST : public BaseAST {
 public:
   std::string ident;
-  ExprPtr arrayIndex; // can be nullptr
+  std::unique_ptr<std::vector<ExprPtr>> arrayIndices;
   bool isScalar() const { return type == Type::SCALAR; }
   bool isArray() const { return type == Type::ARRAY; }
 
   LValAST(const std::string &var)
-      : ident(var), arrayIndex(nullptr), type(Type::SCALAR) {}
-  LValAST(const std::string &var, ExprPtr index)
-      : ident(var), arrayIndex(std::move(index)), type(Type::ARRAY) {}
+      : ident(var), arrayIndices(nullptr), type(Type::SCALAR) {}
+  LValAST(const std::string &var, std::unique_ptr<std::vector<ExprPtr>> index)
+      : ident(var), arrayIndices(std::move(index)), type(Type::ARRAY) {}
 
 private:
   enum class Type { SCALAR, ARRAY } type;
