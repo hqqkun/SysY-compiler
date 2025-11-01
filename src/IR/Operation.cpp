@@ -111,16 +111,16 @@ ReturnOp::ReturnOp(IRContext &context, Value *retVal) {
 }
 
 LocalAlloc::LocalAlloc(IRContext &context, const std::string &name,
-                       Type *allocType, bool isUserVar, size_t size)
-    : AllocOp(name, allocType, size), userVariable(isUserVar) {
+                       Type *allocType, bool isUserVar)
+    : AllocOp(name, allocType), userVariable(isUserVar) {
   assert(allocType && "AllocOp type cannot be null");
   resultType = PointerType::get(context, allocType);
   result = context.create<OpResult>(this);
 }
 
 GlobalAlloc::GlobalAlloc(IRContext &context, const std::string &var,
-                         Type *allocType, Value *initVal, size_t size)
-    : AllocOp(var, allocType, size), initValue(initVal), initValues(),
+                         Type *allocType, Value *initVal)
+    : AllocOp(var, allocType), initValue(initVal), initValues(),
       kind(Kind::SINGLE) {
   assert(allocType && "GlobalAlloc type cannot be null");
   resultType = PointerType::get(context, allocType);
@@ -128,9 +128,8 @@ GlobalAlloc::GlobalAlloc(IRContext &context, const std::string &var,
 }
 
 GlobalAlloc::GlobalAlloc(IRContext &context, const std::string &var,
-                         Type *allocType, const std::list<Value *> &initVals,
-                         size_t size)
-    : AllocOp(var, allocType, size), initValue(nullptr), initValues(initVals),
+                         Type *allocType, const std::vector<Value *> &initVals)
+    : AllocOp(var, allocType), initValue(nullptr), initValues(initVals),
       kind(Kind::MULTIPLE) {
   assert(allocType && "GlobalAlloc type cannot be null");
   assert(allocType->isArray() &&

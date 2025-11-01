@@ -93,4 +93,8 @@ private:
   std::list<Table> symbolTables;
 };
 
+/// Retrieves the dimensions of a multi-dimensional array type as a list of
+/// sizes.
+std::vector<size_t> getArrayDimensions(const ir::ArrayType *arrayType);
+
 #endif // __UTILS_UTILS_H__

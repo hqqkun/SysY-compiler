@@ -101,11 +101,41 @@ private:
 
   /// Helper function to initialize an array with given initial values.
   void initializeLocalArray(ir::IRBuilder &builder, ir::Value *alloc,
-                            size_t arraySize, size_t initCount,
-                            std::function<ir::Value *(size_t)> getInitValue);
-  void initializeGlobalArray(ir::IRBuilder &builder, ir::Value *alloc,
-                             size_t arraySize, size_t initCount,
-                             std::function<ir::Value *(size_t)> getInitValue);
+                            const std::vector<size_t> &dims,
+                            const std::vector<ir::Value *> &initValues);
+  /// Evaluate and validate array dimension sizes.
+  std::vector<size_t>
+  evaluateArraySizes(std::vector<ast::ConstExpPtr> &arraySizes);
+
+  /// Utility function to flatten initializer lists.
+  void flattenInitList(ir::IRBuilder &builder,
+                       std::vector<ast::InitValASTPtr> &initList,
+                       const std::vector<size_t> &dims,
+                       std::vector<ir::Value *> &result);
+  void flattenConstInitList(ir::IRBuilder &builder,
+                            std::vector<ast::ConstInitValASTPtr> &initList,
+                            const std::vector<size_t> &dims,
+                            std::vector<ir::Value *> &result);
+
+  template <typename NodeType, typename ContainerType, typename GetChildrenFunc,
+            typename ValueExtractorType>
+  void flattenGenericInitList(ir::IRBuilder &builder, ContainerType &initList,
+                              const std::vector<size_t> &dims,
+                              std::vector<ir::Value *> &result,
+                              const GetChildrenFunc &getChildren,
+                              const ValueExtractorType &valueExtractor);
+  /// Recursive function to flatten the initializer list.
+  template <typename NodeType, typename GetChildrenFunc,
+            typename ValueExtractorType>
+  void flattenGenericNode(ir::IRBuilder &builder, NodeType *node,
+                          size_t &alignDim, const std::vector<size_t> &dims,
+                          std::vector<size_t> &indices,
+                          std::vector<ir::Value *> &result,
+                          const GetChildrenFunc &getChildren,
+                          const ValueExtractorType &valueExtractor);
+  /// Utility function to get pointer from array with indices.
+  ir::Value *computeArrayElementPtr(ir::IRBuilder &builder, ir::Value *basePtr,
+                                    const std::vector<ast::ExprPtr> &indices);
 
   /// Utility functions for block id management.
   uint64_t getNextBlockId() { return nextBlockId++; }

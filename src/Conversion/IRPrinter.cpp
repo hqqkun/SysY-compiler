@@ -1,5 +1,7 @@
 #include <cassert>
 #include <cstddef>
+#include <functional>
+#include <numeric>
 #include <ostream>
 #include <unordered_map>
 
@@ -7,6 +9,7 @@
 #include "IR/BasicBlock.h"
 #include "IR/Function.h"
 #include "IR/Operation.h"
+#include "Utils/Utils.h"
 
 namespace conversion {
 
@@ -291,6 +294,7 @@ void IRPrinter::printSingleInitializer(ir::GlobalAlloc *allocOp,
   }
 }
 
+/// Prints the initializer for a multi-dimensional array in nested braces.
 void IRPrinter::printArrayInitializer(ir::GlobalAlloc *allocOp,
                                       OpResultMap &map) {
   assert(allocOp && "GlobalAlloc cannot be null");
@@ -303,19 +307,41 @@ void IRPrinter::printArrayInitializer(ir::GlobalAlloc *allocOp,
     return;
   }
 
-  size_t arraySize = arrayType->getSize();
+  const auto dims = getArrayDimensions(arrayType);
+  const size_t totalElements =
+      std::accumulate(dims.begin(), dims.end(), 1u, std::multiplies<size_t>());
+  assert(initValues.size() == totalElements &&
+         "Initializer size mismatch with array dimensions");
+
+  // Recursive lambda to print nested dimensions
+  // Parameters: current dimension index, start index in initValues, stride
+  // between elements.
+  const auto printDimension = [&](auto &self, size_t dimIdx, size_t startIdx,
+                                  size_t stride) {
+    // Last dimension: directly print elements in sequence
+    if (dimIdx == dims.size() - 1) {
+      for (size_t i = 0; i < dims[dimIdx]; ++i) {
+        if (i != 0)
+          os << ", ";
+        printOperand(initValues[startIdx + i], map);
+      }
+      return;
+    }
+
+    // Nested dimensions: print sub-dimensions in braces.
+    const size_t nextStride = stride / dims[dimIdx + 1];
+    for (size_t i = 0; i < dims[dimIdx]; ++i) {
+      if (i != 0)
+        os << ", ";
+      os << "{";
+      self(self, dimIdx + 1, startIdx + i * stride, nextStride);
+      os << "}";
+    }
+  };
+
+  // Print outermost braces and start recursion.
   os << "{";
-  // Print all provided initial values.
-  size_t printedCount = 0;
-  for (ir::Value *init : initValues) {
-    if (printedCount > 0)
-      os << ", ";
-    printOperand(init, map);
-    printedCount++;
-  }
-  for (size_t i = printedCount; i < arraySize; ++i) {
-    os << ", 0";
-  }
+  printDimension(printDimension, 0, 0, totalElements / dims[0]);
   os << "}";
 }
 

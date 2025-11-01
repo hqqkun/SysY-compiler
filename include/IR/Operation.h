@@ -135,23 +135,21 @@ public:
 
 class AllocOp : public Operation {
 public:
-  explicit AllocOp(const std::string &name, Type *type, size_t size = 1)
-      : varName(name), elemType(type), allocSize(size) {}
+  explicit AllocOp(const std::string &name, Type *type)
+      : varName(name), elemType(type) {}
   std::string_view getOpName() const override { return "alloc"; }
   Type *getElementType() const { return elemType; }
   const std::string &getVarName() const { return varName; }
-  size_t getAllocSize() const { return allocSize; }
 
 protected:
   std::string varName;
   Type *elemType;
-  size_t allocSize;
 };
 
 class LocalAlloc : public AllocOp {
 public:
   explicit LocalAlloc(IRContext &context, const std::string &var,
-                      Type *allocType, bool isUserVar = true, size_t size = 1);
+                      Type *allocType, bool isUserVar = true);
   bool isUserVariable() const { return userVariable; }
 
 private:
@@ -163,35 +161,29 @@ private:
 class GlobalAlloc : public AllocOp {
 public:
   explicit GlobalAlloc(IRContext &context, const std::string &var,
-                       Type *allocType, Value *initVal = nullptr,
-                       size_t size = 1);
+                       Type *allocType, Value *initVal = nullptr);
   explicit GlobalAlloc(IRContext &context, const std::string &var,
-                       Type *allocType, const std::list<Value *> &initVals,
-                       size_t size = 1);
+                       Type *allocType, const std::vector<Value *> &initVals);
   static GlobalAlloc *create(IRContext &context, const std::string &var,
-                             Type *allocType, Value *initVal = nullptr,
-                             size_t size = 1) {
-    return context.create<GlobalAlloc>(var, allocType, initVal, size);
+                             Type *allocType, Value *initVal = nullptr) {
+    return context.create<GlobalAlloc>(var, allocType, initVal);
   }
 
   static GlobalAlloc *create(IRContext &context, const std::string &var,
                              Type *allocType,
-                             const std::list<Value *> &initVals,
-                             size_t size = 1) {
-    GlobalAlloc *alloc =
-        context.create<GlobalAlloc>(var, allocType, initVals, size);
-    alloc->initValues = initVals;
+                             const std::vector<Value *> &initVals) {
+    GlobalAlloc *alloc = context.create<GlobalAlloc>(var, allocType, initVals);
     return alloc;
   }
 
   Value *getInitValue() const { return initValue; }
-  const std::list<Value *> &getInitValues() const { return initValues; }
+  const std::vector<Value *> &getInitValues() const { return initValues; }
   bool isSingle() const { return kind == Kind::SINGLE; }
   bool isMultiple() const { return kind == Kind::MULTIPLE; }
 
 private:
-  Value *initValue;              // can be nullptr
-  std::list<Value *> initValues; // for array initializations
+  Value *initValue;                // can be nullptr
+  std::vector<Value *> initValues; // for array initializations
   enum class Kind { SINGLE, MULTIPLE } kind;
 };
 
