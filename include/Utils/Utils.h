@@ -97,4 +97,8 @@ private:
 /// sizes.
 std::vector<size_t> getArrayDimensions(const ir::ArrayType *arrayType);
 
+/// Computes the total number of elements in a multi-dimensional array type
+/// by multiplying all dimension sizes.
+size_t getTotalArraySize(const ir::ArrayType *arrayType);
+
 #endif // __UTILS_UTILS_H__

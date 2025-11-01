@@ -175,6 +175,9 @@ private:
                     const uint32_t stackSize);
   bool isNeedStackForRa(const ir::Function *func);
 
+  void emitAddressForValue(Register baseReg, ir::Value *base,
+                           std::vector<mc::MCInst> &outInsts);
+
   // LV4: map each OpResult to a stack slot.
   std::unordered_map<ir::Value *, uint32_t> value2StackSlotMap;
   // LV8: global variables.
