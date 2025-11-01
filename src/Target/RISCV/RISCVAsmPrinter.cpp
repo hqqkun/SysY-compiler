@@ -6,6 +6,7 @@
 #include "IR/Function.h"
 #include "Target/RISCV/RISCVAsmPrinter.h"
 #include "Target/RISCV/RISCVInstrInfo.h"
+#include "Utils/Utils.h"
 
 namespace target {
 namespace riscv {
@@ -108,19 +109,17 @@ void RISCVAsmPrinter::emitGlobalVarDecl(const ir::GlobalVarDecl *varDecl) {
       out << std::endl;
       return;
     }
-    size_t arraySize = arrayType->getSize();
-    // Print all provided initial values.
-    size_t printedCount = 0;
+
+    size_t arraySize = getTotalArraySize(arrayType);
+    // Since we insert zero initialization for uninitialized elements in irgen
+    // phase, this is guaranteed to match.
+    assert(arraySize == initValues.size() &&
+           "Initializer size does not match array size");
     for (ir::Value *init : initValues) {
       assert(init->getType()->isInteger() &&
              "Only integer initial values are supported");
       ir::Integer *intVal = static_cast<ir::Integer *>(init);
       out << "\t" << kWordDirective << " " << intVal->getValue() << std::endl;
-      printedCount++;
-    }
-    // Zero-initialize the remaining elements.
-    for (size_t i = printedCount; i < arraySize; ++i) {
-      out << "\t" << kWordDirective << " 0" << std::endl;
     }
   }
 

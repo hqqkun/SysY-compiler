@@ -404,15 +404,8 @@ void RISCVInstrInfo::lowerGetElemPtrOp(ir::GetElemPtrOp *gepOp,
 
   // Lower base pointer.
   Register baseReg = riscv::T0;
+  emitAddressForValue(baseReg, base, outInsts);
 
-  if (isGlobalVariable(base)) {
-    const std::string &varName = getGlobalVarName(base);
-    getGlobalVarAddress(baseReg, varName, outInsts);
-  } else {
-    uint32_t baseSlot = getStackSlot(base);
-    addImmediateToRegister(baseReg, riscv::SP, static_cast<int32_t>(baseSlot),
-                           outInsts);
-  }
   // Lower index.
   Register indexReg = lowerOperand(index, Register::T1, outInsts);
   if (indexReg == riscv::ZERO) {
@@ -437,6 +430,29 @@ void RISCVInstrInfo::lowerGetElemPtrOp(ir::GetElemPtrOp *gepOp,
                          .addReg(baseReg)
                          .addReg(indexReg));
   emitStoreWithOffset(baseReg, riscv::SP, resultSlot, outInsts, indexReg);
+}
+
+void RISCVInstrInfo::emitAddressForValue(Register baseReg, ir::Value *base,
+                                         std::vector<mc::MCInst> &outInsts) {
+  // Handle global variable: directly get its address (e.g., via symbol
+  // reference).
+  if (isGlobalVariable(base)) {
+    const std::string &varName = getGlobalVarName(base);
+    getGlobalVarAddress(baseReg, varName, outInsts);
+    return;
+  }
+
+  const uint32_t stackSlot = getStackSlot(base);
+  if (isElementPtr(base)) {
+    // Case 1: Base is an element pointer (already stored in stack slot)
+    // Load the pre-computed address from the stack slot into baseReg.
+    emitLoadWithOffset(baseReg, riscv::SP, stackSlot, outInsts);
+  } else {
+    // Case 2: Direct stack object (compute address as SP + stackSlot)
+    // Calculate address by adding stack slot offset to stack pointer (SP).
+    addImmediateToRegister(baseReg, riscv::SP, static_cast<int32_t>(stackSlot),
+                           outInsts);
+  }
 }
 
 /// Lower the given IR value to a given RISC-V register.
