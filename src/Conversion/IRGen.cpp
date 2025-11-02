@@ -945,7 +945,7 @@ static const Type *getASTIntPtrType() {
 static const std::vector<LibFunc> libFuncs = {
     {"getint", {}, getASTIntType()},
     {"getch", {}, getASTIntType()},
-    {"getarray", {getASTIntPtrType()}, getASTVoidType()},
+    {"getarray", {getASTIntPtrType()}, getASTIntType()},
     {"putint", {getASTIntType()}, getASTVoidType()},
     {"putch", {getASTIntType()}, getASTVoidType()},
     {"putarray", {getASTIntType(), getASTIntPtrType()}, getASTVoidType()},
