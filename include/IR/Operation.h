@@ -263,6 +263,18 @@ public:
   std::string_view getOpName() const override { return "getelemptr"; }
 };
 
+class GetPtrOp : public Operation {
+public:
+  explicit GetPtrOp(IRContext &context, Value *ptr, Value *index);
+  Value *getPointer() const { return getOperand(0); }
+  Value *getIndex() const { return getOperand(1); }
+  Type *getPointeeType() const {
+    return static_cast<PointerType *>(resultType)->getPointeeType();
+  }
+
+  std::string_view getOpName() const override { return "getptr"; }
+};
+
 } // namespace ir
 
 #endif // __IR_OPERATION_H__

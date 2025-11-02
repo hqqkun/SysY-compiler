@@ -145,6 +145,18 @@ FuncFParam
       auto ident = *std::unique_ptr<std::string>($2);
       $$ = new ast::FuncFParamAST(std::move(type), ident);
     }
+    | Type IDENT '[' ']' {
+      auto pointerType = std::make_unique<ast::Type>($1);
+      auto ident = *std::unique_ptr<std::string>($2);
+      $$ = new ast::FuncFParamAST(std::move(pointerType), ident);
+    }
+    | Type IDENT '[' ']' IndexExpList {
+      auto sizes = std::unique_ptr<std::vector<ast::ConstExpPtr>>($5);
+      auto arrayType = std::make_unique<ast::Type>($1, std::move(sizes));
+      auto pointerType = std::make_unique<ast::Type>(arrayType.release());
+      auto ident = *std::unique_ptr<std::string>($2);
+      $$ = new ast::FuncFParamAST(std::move(pointerType), ident);
+    }
 
 Type
     : INT {

@@ -218,4 +218,18 @@ GetElemPtrOp::GetElemPtrOp(IRContext &context, Value *base, Value *index) {
   result = context.create<OpResult>(this);
 };
 
+GetPtrOp::GetPtrOp(IRContext &context, Value *ptr, Value *index) {
+  assert(ptr && "GetPtrOp pointer cannot be null");
+  assert(index && "GetPtrOp index cannot be null");
+  assert(ptr->getType()->isPointer() &&
+         "GetPtrOp pointer must be a pointer type");
+
+  operands.emplace_back(ptr);
+  operands.emplace_back(index);
+  ptr->addUser(this);
+  index->addUser(this);
+  resultType = ptr->getType();
+  result = context.create<OpResult>(this);
+};
+
 } // namespace ir

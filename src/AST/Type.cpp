@@ -1,5 +1,7 @@
-#include "AST/Type.h"
 #include <cassert>
+
+#include "AST/AST.h"
+#include "AST/Type.h"
 
 namespace ast {
 
@@ -27,4 +29,7 @@ std::string toString(const Type &type) {
       return "UNKNOWN";
   }
 }
+
+Type::~Type() = default;
+
 } // namespace ast
