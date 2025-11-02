@@ -28,7 +28,7 @@ Function::Function(IRContext &context, const std::string &name,
   for (size_t i = 0; i < argNames.size(); ++i) {
     const std::string &argName = argNames[i];
     Type *paramType = funcType->getParamTypes()[i];
-    FuncArg *arg = context.create<FuncArg>(paramType, argName, i);
+    FuncArg *arg = context.create<FuncArg>(paramType, name, argName, i);
     args.push_back(arg);
   }
 }

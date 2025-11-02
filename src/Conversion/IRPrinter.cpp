@@ -53,7 +53,7 @@ void IRPrinter::printFunction(ir::Function *func) {
   // Collect argument names.
   std::vector<std::string> argNames;
   for (ir::FuncArg *arg : func->getArgs()) {
-    argNames.push_back(arg->getName());
+    argNames.push_back(arg->getFullName());
   }
 
   os << "fun @" << func->getName();
@@ -196,7 +196,7 @@ void IRPrinter::printOperand(ir::Value *operand, OpResultMap &resultMap) {
     os << "%" << id;
   } else if (operand->isFuncArg()) {
     ir::FuncArg *funcArg = static_cast<ir::FuncArg *>(operand);
-    os << "@" << funcArg->getName();
+    os << "@" << funcArg->getFullName();
   } else {
     assert(false && "Unknown operand type");
   }
