@@ -137,6 +137,10 @@ private:
   ir::Value *computeArrayElementPtr(ir::IRBuilder &builder, ir::Value *basePtr,
                                     const std::vector<ast::ExprPtr> &indices);
 
+  /// Convert AST Type to IR Type.
+  std::optional<ir::Type *> ASTType2IRType(ir::IRContext &context,
+                                           const ast::Type &type);
+
   /// Utility functions for block id management.
   uint64_t getNextBlockId() { return nextBlockId++; }
   uint64_t getNextTempId() { return nextTempId++; }

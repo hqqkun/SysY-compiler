@@ -36,9 +36,17 @@ void updateIndicesWithAlign(const std::vector<size_t> &dims,
 
 /// Convert AST Type to IR Type.
 /// If the type is void, return std::nullopt.
-static std::optional<ir::Type *> ASTType2IRType(ir::IRContext &context,
+std::optional<ir::Type *> IRGen::ASTType2IRType(ir::IRContext &context,
                                                 const Type &type) {
   switch (type.kind) {
+    case Type::Kind::ARRAY: {
+      auto elementTypeOpt = ASTType2IRType(context, *type.array.elementType);
+      if (!elementTypeOpt.has_value()) {
+        return std::nullopt; // Void array element type is invalid.
+      }
+      std::vector<size_t> arraySizes = evaluateArraySizes(*type.array.sizes);
+      return ir::ArrayType::get(context, elementTypeOpt.value(), arraySizes);
+    }
     case Type::Kind::BASE: {
       switch (type.base) {
         case BaseType::INT:
@@ -74,12 +82,32 @@ ir::Value *IRGen::computeArrayElementPtr(ir::IRBuilder &builder,
     indexValues.push_back(indexValue);
   }
 
-  // Chain together GetElemPtr operations to calculate the final element
-  // pointer.
+  assert(basePtr->getType() && basePtr->getType()->isPointer() &&
+         "Base pointer must be a pointer type");
+  ir::PointerType *ptrType = static_cast<ir::PointerType *>(basePtr->getType());
+  ir::Type *pointeeType = ptrType->getPointeeType();
+  assert(pointeeType && "Base pointer must point to a valid type");
+
   ir::Value *currentPtr = basePtr;
-  for (const auto &indexValue : indexValues) {
-    currentPtr =
-        builder.create<ir::GetElemPtrOp>(currentPtr, indexValue)->getResult();
+  if (pointeeType->isArray()) {
+    // Chain together GetElemPtr operations to calculate the final element
+    // pointer.
+    for (const auto &indexValue : indexValues) {
+      currentPtr =
+          builder.create<ir::GetElemPtrOp>(currentPtr, indexValue)->getResult();
+    }
+    return currentPtr;
+  }
+
+  // This is an array pointer case. Use GetPtr for the first index.
+  currentPtr = builder
+                   .create<ir::GetPtrOp>(
+                       builder.create<ir::LoadOp>(currentPtr)->getResult(),
+                       indexValues[0])
+                   ->getResult();
+  for (size_t i = 1; i < indexValues.size(); ++i) {
+    currentPtr = builder.create<ir::GetElemPtrOp>(currentPtr, indexValues[i])
+                     ->getResult();
   }
   return currentPtr;
 }
@@ -360,14 +388,43 @@ ir::Value *IRGen::convertLval(ir::IRBuilder &builder, LValAST *lvalAST) {
   SymbolTable::Val lval = varTables.get(lvalAST->ident);
   if (std::holds_alternative<ir::Value *>(lval)) {
     ir::Value *lvalPtr = std::get<ir::Value *>(lval);
+    assert(lvalPtr && "LVal pointer cannot be null");
+    assert(lvalPtr->getType()->isPointer() && "LVal must be a pointer type");
+    ir::Type *pointeeType =
+        static_cast<ir::PointerType *>(lvalPtr->getType())->getPointeeType();
+    assert(pointeeType && "LVal pointer must point to a valid type");
 
-    // If there are indices, we need to compute the address using GetElemPtrOp.
+    // No indices.
     if (lvalAST->isScalar()) {
-      return builder.create<ir::LoadOp>(lvalPtr)->getResult();
+      if (pointeeType->isArray()) {
+        return builder
+            .create<ir::GetElemPtrOp>(lvalPtr, ir::Integer::get(context, 0, 32))
+            ->getResult();
+      }
+      ir::Value *load = builder.create<ir::LoadOp>(lvalPtr)->getResult();
+      if (load->getType()->isPointer()) {
+        load = builder
+                   .create<ir::GetPtrOp>(load, ir::Integer::get(context, 0, 32))
+                   ->getResult();
+      }
+      return load;
     }
+    // If there are indices, we need to compute the address.
     assert(lvalAST->isArray() && "LVal must be either scalar or array");
     ir::Value *elementPtr =
         computeArrayElementPtr(builder, lvalPtr, *(lvalAST->arrayIndices));
+    // TODO: Handle array decay if needed, do I need load?
+    assert(elementPtr->getType()->isPointer() &&
+           "Element pointer must be a pointer type");
+    pointeeType =
+        static_cast<ir::PointerType *>(elementPtr->getType())->getPointeeType();
+    assert(pointeeType && "Element pointer must point to a valid type");
+    if (pointeeType->isArray()) {
+      return builder
+          .create<ir::GetElemPtrOp>(elementPtr,
+                                    ir::Integer::get(context, 0, 32))
+          ->getResult();
+    }
     return builder.create<ir::LoadOp>(elementPtr)->getResult();
   } else {
     assert(std::holds_alternative<int32_t>(lval) &&
@@ -905,7 +962,7 @@ void IRGen::prepareFunctionArgs(ir::IRBuilder &builder,
   }
   for (ir::FuncArg *arg : function->getArgs()) {
     // 1. Create an allocation for the argument.
-    auto *type = dynamic_cast<ir::IntegerType *>(arg->getType());
+    ir::Type *type = arg->getType();
     if (!type) {
       continue;
     }
