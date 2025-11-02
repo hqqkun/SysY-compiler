@@ -60,15 +60,27 @@ private:
 
 class FuncArg : public Value {
 public:
-  explicit FuncArg(IRContext &context, Type *type, const std::string &argName,
-                   size_t index)
-      : Value(type, ValueKind::kFuncArg), name(argName), index(index) {}
+  explicit FuncArg(IRContext &context, Type *type, const std::string &funcName,
+                   const std::string &argName, size_t index)
+      : Value(type, ValueKind::kFuncArg), funcName(funcName), name(argName),
+        index(index) {}
   size_t getIndex() const { return index; }
+  const std::string &getFunctionName() const { return funcName; }
   const std::string &getName() const { return name; }
+  const std::string &getFullName() const {
+    // Generate full name as functionName_argName_index.
+    // Simple workaround to avoid a same name as global variables.
+    // It may still cause name conflicts if users use the same naming scheme.
+    // In future, we may need a better naming scheme.
+    static std::string fullName;
+    fullName = funcName + "_" + name + "_" + std::to_string(index);
+    return fullName;
+  }
 
 private:
-  std::string name; // argument name
-  size_t index;     // argument index in the function
+  std::string funcName; // function name
+  std::string name;     // argument name
+  size_t index;         // argument index in the function
 };
 
 } // namespace ir
