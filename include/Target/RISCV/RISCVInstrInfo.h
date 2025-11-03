@@ -96,6 +96,7 @@ public:
   void lowerCallOp(ir::CallOp *callOp, std::vector<mc::MCInst> &outInsts);
   void lowerGetElemPtrOp(ir::GetElemPtrOp *gepOp,
                          std::vector<mc::MCInst> &outInsts);
+  void lowerGetPtrOp(ir::GetPtrOp *getPtrOp, std::vector<mc::MCInst> &outInsts);
   void emitPrologue(std::vector<mc::MCInst> &outInsts,
                     const uint32_t stackSize = 0);
   void emitLabel(std::string_view label, std::vector<mc::MCInst> &outInsts);

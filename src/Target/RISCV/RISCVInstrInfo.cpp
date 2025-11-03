@@ -117,6 +117,24 @@ static const std::unordered_map<std::type_index, OpHandler> opHandlers = {
      }},
 };
 
+/// Compute the effective address for an element pointer: base + index *
+/// elemSize.
+static void computeEffectiveAddress(Register baseReg, Register indexReg,
+                                    Register elemSizeReg, size_t elemSize,
+                                    std::vector<mc::MCInst> &outInsts) {
+  outInsts.push_back(mc::MCInstBuilder(riscv::LI)
+                         .addReg(elemSizeReg)
+                         .addImm(static_cast<int32_t>(elemSize)));
+  outInsts.push_back(mc::MCInstBuilder(riscv::MUL)
+                         .addReg(indexReg)
+                         .addReg(indexReg)
+                         .addReg(elemSizeReg));
+  outInsts.push_back(mc::MCInstBuilder(riscv::ADD)
+                         .addReg(baseReg)
+                         .addReg(baseReg)
+                         .addReg(indexReg));
+}
+
 /// Adds an immediate value to the value in a source register and stores the
 /// result in a destination register, handling both 12-bit and larger
 /// immediates.
@@ -188,15 +206,8 @@ static inline void emitStoreWithOffset(Register value, Register baseReg,
 /// register.
 static Register loadFromStackWithBase(Register dst, Register baseReg,
                                       int32_t offset,
-                                      std::vector<mc::MCInst> &outInsts,
-                                      bool elemPtr = false) {
+                                      std::vector<mc::MCInst> &outInsts) {
   emitLoadWithOffset(dst, baseReg, offset, outInsts);
-  if (elemPtr) {
-    // Dereference the pointer to get the actual value.
-    // %0 = getelementptr %ptr
-    // %1 = load %0
-    emitLoadWithOffset(dst, dst, 0, outInsts);
-  }
   return dst;
 }
 
@@ -290,6 +301,9 @@ void RISCVInstrInfo::lowerLoadOp(ir::LoadOp *loadOp,
   assert(loadOp && "LoadOp is null");
   Value *ptr = loadOp->getPointer();
   Register src = lowerOperand(ptr, Register::T0, outInsts);
+  if (isElementPtr(ptr)) {
+    emitLoadWithOffset(src, src, 0, outInsts);
+  }
   Value *result = loadOp->getResult();
   uint32_t resultSlot = getStackSlot(result);
 
@@ -418,17 +432,39 @@ void RISCVInstrInfo::lowerGetElemPtrOp(ir::GetElemPtrOp *gepOp,
   // Compute effective address: base + index * elemSize
   size_t elemSize = getTypeSizeInBytes(elemType);
   Register elemSizeReg = riscv::T2;
-  outInsts.push_back(mc::MCInstBuilder(riscv::LI)
-                         .addReg(elemSizeReg)
-                         .addImm(static_cast<int32_t>(elemSize)));
-  outInsts.push_back(mc::MCInstBuilder(riscv::MUL)
-                         .addReg(indexReg)
-                         .addReg(indexReg)
-                         .addReg(elemSizeReg));
-  outInsts.push_back(mc::MCInstBuilder(riscv::ADD)
-                         .addReg(baseReg)
-                         .addReg(baseReg)
-                         .addReg(indexReg));
+  computeEffectiveAddress(baseReg, indexReg, elemSizeReg, elemSize, outInsts);
+  emitStoreWithOffset(baseReg, riscv::SP, resultSlot, outInsts, indexReg);
+}
+
+/// Lower the given GetPtrOp to RISC-V instructions.
+void RISCVInstrInfo::lowerGetPtrOp(ir::GetPtrOp *getPtrOp,
+                                   std::vector<mc::MCInst> &outInsts) {
+  assert(getPtrOp && "GetPtrOp is null");
+  ir::Type *pointeeType = getPtrOp->getPointeeType();
+  ir::Value *base = getPtrOp->getPointer();
+  ir::Value *index = getPtrOp->getIndex();
+  uint32_t resultSlot = getStackSlot(getPtrOp->getResult());
+  markAsElementPtr(getPtrOp->getResult());
+
+  // Load base pointer from stack slot.
+  Register baseReg = riscv::T0;
+  uint32_t stackSlot = getStackSlot(base);
+  emitLoadWithOffset(baseReg, riscv::SP, stackSlot, outInsts);
+
+  // Lower index.
+  Register indexReg = lowerOperand(index, Register::T1, outInsts);
+  if (indexReg == riscv::ZERO) {
+    // If index is ZERO, the effective address is just the base address.
+    Register temp = (baseReg != riscv::T0) ? riscv::T0 : riscv::T1;
+    emitStoreWithOffset(baseReg, riscv::SP, resultSlot, outInsts, temp);
+    return;
+  }
+
+  // Compute effective address: base + index * pointeeSize
+  size_t pointeeSize = getTypeSizeInBytes(pointeeType);
+  Register elemSizeReg = riscv::T2;
+  computeEffectiveAddress(baseReg, indexReg, elemSizeReg, pointeeSize,
+                          outInsts);
   emitStoreWithOffset(baseReg, riscv::SP, resultSlot, outInsts, indexReg);
 }
 
@@ -491,8 +527,7 @@ Register RISCVInstrInfo::lowerOperand(ir::Value *val, Register temp,
     return loadFromStackWithBase(temp, riscv::FP, offset, outInsts);
   }
 
-  return loadFromStackWithBase(temp, riscv::SP, getStackSlot(val), outInsts,
-                               isElementPtr(val));
+  return loadFromStackWithBase(temp, riscv::SP, getStackSlot(val), outInsts);
 }
 
 bool RISCVInstrInfo::isNeedStackForRa(const ir::Function *func) {
