@@ -90,6 +90,8 @@ RISCVISel::selectInstructions(const ir::Function *func) {
         instrInfo.lowerCallOp(call, mcInsts);
       } else if (auto *gep = dynamic_cast<ir::GetElemPtrOp *>(op)) {
         instrInfo.lowerGetElemPtrOp(gep, mcInsts);
+      } else if (auto *getPtr = dynamic_cast<ir::GetPtrOp *>(op)) {
+        instrInfo.lowerGetPtrOp(getPtr, mcInsts);
       } else {
         // Handle other operation types here.
         // For now, we can just ignore them or throw an error.
